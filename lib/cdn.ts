@@ -9,14 +9,6 @@ if (typeof window === 'undefined') {
     throw new Error('CaliChatWidget can only be used in a browser environment');
 }
 
-// Function to inject CSS into the page
-function injectStyles() {
-    if (document.getElementById('cali-chat-widget-styles')) {
-        return;
-    }
-    console.log('✅ Cali Chat Widget styles loaded');
-}
-
 // Initialize function
 function init(config: WidgetConfig & { containerId?: string }) {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -25,9 +17,6 @@ function init(config: WidgetConfig & { containerId?: string }) {
     }
 
     const { containerId, ...widgetConfig } = config;
-    
-    // Inject styles
-    injectStyles();
     
     // Create container if containerId not provided
     let container = document.getElementById(containerId || "cali-chat-widget-root");
@@ -41,7 +30,6 @@ function init(config: WidgetConfig & { containerId?: string }) {
     try {
         const root = ReactDOM.createRoot(container);
         root.render(React.createElement(CaliChatWidget, widgetConfig));
-        console.log('✅ Cali Chat Widget initialized successfully!');
     } catch (error) {
         console.error('❌ Failed to initialize Cali Chat Widget:', error);
     }
@@ -69,21 +57,22 @@ declare global {
 // Auto-initialize if config is provided via data attributes
 if (typeof document !== 'undefined') {
     const initFromDataAttributes = () => {
-        const script = document.querySelector('script[data-bot-id]') as HTMLScriptElement;
-        if (script) {
+        const scripts = document.querySelectorAll('script[data-bot-id]');
+        scripts.forEach((script) => {
+            const htmlScript = script as HTMLScriptElement;
             const config: WidgetConfig = {
-                botId: script.getAttribute('data-bot-id') || '',
-                apiBaseUrl: script.getAttribute('data-api-url') || '',
-                primaryColor: script.getAttribute('data-primary-color') || undefined,
-                botName: script.getAttribute('data-bot-name') || undefined,
-                welcomeMessage: script.getAttribute('data-welcome-message') || undefined,
-                position: (script.getAttribute('data-position') as any) || 'bottom-right'
+                botId: htmlScript.getAttribute('data-bot-id') || '',
+                apiBaseUrl: htmlScript.getAttribute('data-api-url') || '',
+                primaryColor: htmlScript.getAttribute('data-primary-color') || undefined,
+                botName: htmlScript.getAttribute('data-bot-name') || undefined,
+                welcomeMessage: htmlScript.getAttribute('data-welcome-message') || undefined,
+                position: (htmlScript.getAttribute('data-position') as any) || 'bottom-right'
             };
             
             if (config.botId && config.apiBaseUrl) {
                 init(config);
             }
-        }
+        });
     };
 
     // Try to init on DOMContentLoaded or immediately if already loaded

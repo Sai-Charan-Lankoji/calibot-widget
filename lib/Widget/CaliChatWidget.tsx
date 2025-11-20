@@ -65,11 +65,9 @@ const DEFAULT_FAQS: FAQ[] = [
 ];
 
 // Helper function to convert hex to HSL
-function hexToHSL(hex: string): string {
-  // Remove the # if present
+function hexToHSL(hex: string): { h: number; s: number; l: number } {
   hex = hex.replace('#', '');
   
-  // Convert hex to RGB
   const r = parseInt(hex.substring(0, 2), 16) / 255;
   const g = parseInt(hex.substring(2, 4), 16) / 255;
   const b = parseInt(hex.substring(4, 6), 16) / 255;
@@ -93,7 +91,18 @@ function hexToHSL(hex: string): string {
   s = Math.round(s * 100);
   l = Math.round(l * 100);
 
-  return `${h} ${s}% ${l}%`;
+  return { h, s, l };
+}
+
+// Helper to generate color variations
+function generateColorVariations(baseColor: string) {
+  const { h, s, l } = hexToHSL(baseColor);
+  
+  return {
+    primary: `${h} ${s}% ${l}%`,
+    primaryHover: `${h} ${s}% ${Math.max(l - 5, 0)}%`,
+    primaryContent: l > 50 ? '222 47% 11%' : '0 0% 100%', // Dark text on light bg, light text on dark bg
+  };
 }
 
 export const CaliChatWidget: React.FC<WidgetConfig> = ({ 
@@ -119,9 +128,15 @@ export const CaliChatWidget: React.FC<WidgetConfig> = ({
   });
 
   useEffect(() => {
+    console.log('🔍 Full URL provided:', apiBaseUrl);
+    console.log('🔍 Extracted bot ID:', botId);
+    
     const initWidget = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/widget/init/${botId}`);
+        const initUrl = `${apiBaseUrl}/api/widget/init/${botId}`;
+        console.log('📡 Calling init endpoint:', initUrl);
+        
+        const response = await fetch(initUrl);
         if (!response.ok) throw new Error('Failed to initialize widget');
         
         const data = await response.json();
@@ -132,15 +147,16 @@ export const CaliChatWidget: React.FC<WidgetConfig> = ({
           error: null
         }));
 
-        // Set primary color from bot config or prop
+        // Apply color from bot config or props
         const color = data.bot.theme_config?.primaryColor || primaryColor;
         if (color.startsWith('#')) {
-          const hsl = hexToHSL(color);
-          document.documentElement.style.setProperty('--color-primary', hsl);
+          const colors = generateColorVariations(color);
+          document.documentElement.style.setProperty('--color-primary', colors.primary);
+          document.documentElement.style.setProperty('--color-primary-hover', colors.primaryHover);
+          document.documentElement.style.setProperty('--color-primary-content', colors.primaryContent);
         }
       } catch (error) {
         console.error('Widget initialization error:', error);
-        // Use default config on error
         setState(prev => ({ 
           ...prev, 
           bot: DEFAULT_BOT_CONFIG,
@@ -150,10 +166,12 @@ export const CaliChatWidget: React.FC<WidgetConfig> = ({
       }
     };
 
-    // Set initial primary color
+    // Set initial color from props
     if (primaryColor.startsWith('#')) {
-      const hsl = hexToHSL(primaryColor);
-      document.documentElement.style.setProperty('--color-primary', hsl);
+      const colors = generateColorVariations(primaryColor);
+      document.documentElement.style.setProperty('--color-primary', colors.primary);
+      document.documentElement.style.setProperty('--color-primary-hover', colors.primaryHover);
+      document.documentElement.style.setProperty('--color-primary-content', colors.primaryContent);
     }
 
     initWidget();
@@ -249,7 +267,7 @@ export const CaliChatWidget: React.FC<WidgetConfig> = ({
   const positionClass = position === 'bottom-left' ? 'left-4' : 'right-4';
 
   return (
-    <div className={cn("cali-chat-widget fixed bottom-4 z-50", positionClass)}>
+    <div className={cn("cali-chat-widget fixed bottom-4 z-50 ", positionClass)} >
       {state.view === 'closed' && (
         <ToggleButton 
           onClick={openWidget} 
