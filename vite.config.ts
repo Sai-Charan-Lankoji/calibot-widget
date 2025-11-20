@@ -26,7 +26,13 @@ export default defineConfig({
         lib: {
             entry: resolve(__dirname, "lib/cdn.ts"),
             name: "CaliChatWidget",
-            fileName: "cali-chat-widget",
+            fileName: (format) => {
+                // Use .js extension for both UMD and ES formats
+                if (format === 'umd') {
+                    return 'cali-chat-widget.umd.js';
+                }
+                return 'cali-chat-widget.js';
+            },
             formats: ["umd", "es"],
         },
         rollupOptions: {

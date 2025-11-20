@@ -1,9 +1,9 @@
 {
     "name": "cali-chat-widget",
-    "version": "0.0.6",
+    "version": "0.0.7",
     "description": "A simple AI chat widget using webhooks.",
     "type": "module",
-    "main": "dist/cali-chat-widget.umd.cjs",
+    "main": "dist/cali-chat-widget.umd.js",
     "module": "dist/cali-chat-widget.js",
     "files": [
         "dist"
@@ -11,7 +11,7 @@
     "exports": {
         ".": {
             "import": "./dist/cali-chat-widget.js",
-            "require": "./dist/cali-chat-widget.umd.cjs"
+            "require": "./dist/cali-chat-widget.umd.js"
         }
     },
     "publishConfig": {
