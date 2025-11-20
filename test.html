@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cali Chat Widget Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        .code-block {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        code {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .status {
+            padding: 10px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Cali Chat Widget Test Page</h1>
+        <p>This page demonstrates the Cali Chat Widget integration. The widget should appear in the bottom-right corner.</p>
+        
+        <div id="status" class="status" style="display: none;"></div>
+
+        <h2>Features to Test:</h2>
+        <ul>
+            <li>✅ Click the chat button to open the widget</li>
+            <li>✅ Browse FAQ questions</li>
+            <li>✅ Search for specific topics</li>
+            <li>✅ Test the visitor form</li>
+            <li>✅ Try sending messages (requires backend)</li>
+            <li>✅ Single file CDN - no separate CSS needed!</li>
+        </ul>
+
+        <div class="code-block">
+            <code>
+                Widget initialized with botId: test-bot-123
+            </code>
+        </div>
+    </div>
+
+    <!-- 🎉 SINGLE SCRIPT TAG - Everything bundled! -->
+    <script src="./dist/cali-chat-widget.umd.cjs"></script>
+
+    <!-- Initialize the widget -->
+    <script>
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + (isError ? 'error' : 'success');
+            statusEl.style.display = 'block';
+        }
+
+        // Wait for everything to load
+        window.addEventListener('load', function() {
+            console.log('Page loaded, checking for CaliChatWidget...');
+            
+            // Check if CaliChatWidget is available
+            if (typeof window.CaliChatWidget === 'undefined') {
+                showStatus('❌ Error: CaliChatWidget is not loaded. Check console for details.', true);
+                console.error('CaliChatWidget not found on window object');
+                console.log('Available window properties:', Object.keys(window));
+                return;
+            }
+
+            if (typeof window.CaliChatWidget.init !== 'function') {
+                showStatus('❌ Error: CaliChatWidget.init is not a function', true);
+                console.error('CaliChatWidget.init is not a function');
+                console.log('CaliChatWidget object:', window.CaliChatWidget);
+                return;
+            }
+
+            try {
+                // Initialize the chat widget
+                window.CaliChatWidget.init({
+                    // Required props
+                    botId: 'test-bot-123',
+                    apiBaseUrl: 'http://localhost:3000',
+                    
+                    // Optional customization
+                    botName: 'Cali Support',
+                    welcomeMessage: 'Hi there! 👋 How can we help you today?',
+                    primaryColor: '#3B82F6',
+                    avatarSrc: 'https://api.dicebear.com/7.x/bottts/svg?seed=cali',
+                    position: 'bottom-right'
+                });
+
+                showStatus('✅ Cali Chat Widget initialized successfully!');
+                console.log('✅ Widget initialized successfully');
+            } catch (error) {
+                showStatus('❌ Error initializing widget: ' + error.message, true);
+                console.error('Error initializing widget:', error);
+            }
+        });
+    </script>
+</body>
+</html>
