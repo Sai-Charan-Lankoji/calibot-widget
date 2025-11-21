@@ -6,6 +6,7 @@ export interface WidgetConfig {
   botName?: string;
   welcomeMessage?: string;
   position?: 'bottom-right' | 'bottom-left';
+  useFavicon?: boolean; // New option - defaults to true
 }
 
 export interface BotConfiguration {

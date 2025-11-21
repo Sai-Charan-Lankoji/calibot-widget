@@ -62,11 +62,13 @@ if (typeof document !== 'undefined') {
             const htmlScript = script as HTMLScriptElement;
             const config: WidgetConfig = {
                 botId: htmlScript.getAttribute('data-bot-id') || '',
-                apiBaseUrl: htmlScript.getAttribute('data-api-url') || '',
+                apiBaseUrl: htmlScript.getAttribute('data-widget-url') || '',
                 primaryColor: htmlScript.getAttribute('data-primary-color') || undefined,
                 botName: htmlScript.getAttribute('data-bot-name') || undefined,
                 welcomeMessage: htmlScript.getAttribute('data-welcome-message') || undefined,
-                position: (htmlScript.getAttribute('data-position') as any) || 'bottom-right'
+                position: (htmlScript.getAttribute('data-position') as any) || 'bottom-right',
+                avatarSrc: htmlScript.getAttribute('data-avatar-src') || undefined,
+                useFavicon: htmlScript.getAttribute('data-use-favicon') !== 'false' // Defaults to true
             };
             
             if (config.botId && config.apiBaseUrl) {

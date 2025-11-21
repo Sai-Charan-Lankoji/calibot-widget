@@ -13,6 +13,8 @@
   ],
   "compilerOptions": {
     "baseUrl": ".",
+    "noImplicitAny": false,
+
     "paths": {
       "@/*": ["./lib/*"]
     }
