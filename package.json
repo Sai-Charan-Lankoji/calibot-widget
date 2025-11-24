@@ -2,23 +2,22 @@
   "name": "cali-chat-widget-monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "Cali Chat Widget - Monorepo with Frontend, Backend, and CDN distribution",
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "cd front && npm run dev",
     "dev:backend": "cd backend_test && npm run dev",
     "build": "cd front && npm run build",
     "build:cdn": "cd front && npm run build:cdn",
-    "preview": "cd front && npm run preview",
-    "deploy:cdn": "npm run build:cdn && npm run copy:dist",
-    "copy:dist": "node scripts/copy-dist.js",
-    "install:all": "npm install && cd front && npm install && cd ../backend_test && npm install"
+    "deploy:cdn": "npm run build:cdn && npm run version:sync",
+    "version:sync": "node scripts/sync-version.js",
+    "release": "node scripts/release.js",
+    "purge:jsdelivr": "node scripts/purge-jsdelivr.js",
+    "install:all": "npm install && cd front && npm install && cd ../backend_test && npm install",
+    "clean:data": "rm -rf backend_test/data/conversations.json backend_test/data/messages.json"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "fs-extra": "^11.2.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "fs-extra": "^11.2.0",
+    "prompts": "^2.4.2"
   }
 }

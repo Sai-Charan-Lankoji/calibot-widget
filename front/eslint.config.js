@@ -9,6 +9,14 @@ export default tseslint.config([
   globalIgnores(['dist']),
   {
     files: ['**/*.{ts,tsx}'],
+    rules: {
+     
+      // 'indent': 'off',
+      // 'quotes': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn', // Example: disable 'any' usage warnings
+      // 'react-refresh/only-export-components': 'off', // Example: disable a common React-refresh rule
+      // ... add more rules set to 'off'
+    },
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,

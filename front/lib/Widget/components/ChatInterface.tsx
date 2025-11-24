@@ -8,12 +8,13 @@ import { Button } from "./ui/Button";
 
 type BubbleMessage = {
   id: string;
-  type: 'bot' | 'user' | 'faq-list' | 'faq-answer' | 'action-buttons';
+  type: 'bot' | 'user' | 'faq-list' | 'faq-answer' | 'action-buttons' | 'agent';
   content: string;
   timestamp: string;
   faqs?: FAQ[];
   actions?: Array<{ label: string; onClick: () => void }>;
   isPending?: boolean;
+  agentName?: string;
 };
 
 type ChatStep = 'welcome' | 'showing-faqs' | 'showing-faq-detail' | 'asking-name' | 'asking-email' | 'chatting';
@@ -52,6 +53,21 @@ const BotMessage = React.memo<{ content: string; avatarSrc?: string; botName: st
   )
 );
 BotMessage.displayName = 'BotMessage';
+
+const AgentMessage = React.memo<{ content: string; agentName?: string }>(
+  ({ content, agentName }) => (
+    <div className="flex items-start gap-2">
+      <div className="w-8 h-8 rounded-full bg-primary text-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-white shadow-sm">
+        {agentName?.charAt(0) || 'A'}
+      </div>
+      <div className="max-w-[85%] bg-white px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm border border-primary/20">
+        <p className="text-xs font-semibold text-primary mb-1">{agentName || 'Support Agent'}</p>
+        <p className="text-sm text-base-content whitespace-pre-wrap">{content}</p>
+      </div>
+    </div>
+  )
+);
+AgentMessage.displayName = 'AgentMessage';
 
 const FAQList = React.memo<{ 
   faqs: FAQ[]; 
@@ -465,6 +481,46 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   });
 
+  // Polling for new messages (Live Chat)
+  useEffect(() => {
+    if (currentStep !== 'chatting' || !conversation) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/conversations/${conversation.id}/messages`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const allMessages = data.messages || [];
+        
+        startTransition(() => {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newMessages = allMessages.filter((m: any) => 
+              !existingIds.has(m.id) && (m.sender_type === 'AGENT' || m.sender_type === 'BOT')
+            );
+
+            if (newMessages.length === 0) return prev;
+
+            const newBubbleMessages: BubbleMessage[] = newMessages.map((m: any) => ({
+              id: m.id,
+              type: m.sender_type === 'AGENT' ? 'agent' : 'bot',
+              content: m.content.text,
+              timestamp: m.timestamp,
+              agentName: m.agent_info?.name
+            }));
+
+            return [...prev, ...newBubbleMessages];
+          });
+        });
+      } catch (error) {
+        console.error('Polling error:', error);
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentStep, conversation, apiBaseUrl]);
+
   const handleSubmit = useCallback(() => {
     if (!inputText.trim()) return;
 
@@ -532,6 +588,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   />
                 ) : message.type === 'action-buttons' ? (
                   <ActionButtons actions={message.actions || []} avatarSrc={avatarSrc} />
+                ) : message.type === 'agent' ? (
+                  <AgentMessage 
+                    content={message.content}
+                    agentName={message.agentName}
+                  />
                 ) : (
                   <BotMessage 
                     content={message.content} 

@@ -5,6 +5,7 @@ import dts from "vite-plugin-dts";
 import tsconfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
+import path from "path"
 
 export default defineConfig({
     plugins: [
@@ -23,6 +24,8 @@ export default defineConfig({
         'process.env.NODE_ENV': JSON.stringify('production'),
     },
     build: {
+        outDir: path.resolve(__dirname, "../dist/"),  
+        emptyOutDir: true,
         lib: {
             entry: resolve(__dirname, "lib/cdn.ts"),
             name: "CaliChatWidget",

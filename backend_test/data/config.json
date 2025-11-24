@@ -1,0 +1,105 @@
+{
+  "bots": {
+    "demo-bot-123": {
+      "id": "demo-bot-123",
+      "bot_name": "Demo Support Bot",
+      "welcome_message": "Hi! I'm your demo support assistant. How can I help you today?",
+      "theme_config": {
+        "primaryColor": "#2c0ba2",
+        "position": "bottom-right",
+        "avatarSrc": null
+      },
+      "feature_config": {
+        "has_live_chat_agents": true,
+        "agent_transfer_enabled": true,
+        "file_upload_enabled": true
+      },
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2025-11-21T10:51:43.083Z"
+    },
+    "default": {
+      "id": "default",
+      "bot_name": "Support Bot",
+      "welcome_message": "Hello! How can I help you today?",
+      "theme_config": {
+        "primaryColor": "#3B82F6",
+        "position": "bottom-right",
+        "avatarSrc": null
+      },
+      "feature_config": {
+        "has_live_chat_agents": false,
+        "agent_transfer_enabled": false,
+        "file_upload_enabled": false
+      },
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2024-01-01T00:00:00.000Z"
+    }
+  },
+  "faqs": [
+    {
+      "id": "faq-1",
+      "question": "How do I reset my password?",
+      "answer": "To reset your password:\n1. Click 'Forgot Password' on the login page\n2. Enter your email address\n3. Check your email for a reset link\n4. Follow the instructions in the email",
+      "answer_html": "<p>To reset your password:</p><ol><li>Click 'Forgot Password' on the login page</li><li>Enter your email address</li><li>Check your email for a reset link</li><li>Follow the instructions in the email</li></ol>",
+      "tags": [
+        "account",
+        "password",
+        "security"
+      ],
+      "category": "Account",
+      "order": 1
+    },
+    {
+      "id": "faq-2",
+      "question": "What payment methods do you accept?",
+      "answer": "We accept all major credit cards (Visa, MasterCard, American Express), PayPal, and bank transfers for enterprise customers.",
+      "answer_html": "<p>We accept all major credit cards (Visa, MasterCard, American Express), PayPal, and bank transfers for enterprise customers.</p>",
+      "tags": [
+        "billing",
+        "payment",
+        "pricing"
+      ],
+      "category": "Billing",
+      "order": 2
+    },
+    {
+      "id": "faq-3",
+      "question": "How can I upgrade my plan?",
+      "answer": "To upgrade your plan:\n1. Go to Settings > Billing\n2. Click 'Change Plan'\n3. Select your desired plan\n4. Confirm the upgrade\n\nThe upgrade takes effect immediately!",
+      "answer_html": "<p>To upgrade your plan:</p><ol><li>Go to Settings > Billing</li><li>Click 'Change Plan'</li><li>Select your desired plan</li><li>Confirm the upgrade</li></ol><p>The upgrade takes effect immediately!</p>",
+      "tags": [
+        "billing",
+        "upgrade",
+        "plans"
+      ],
+      "category": "Billing",
+      "order": 3
+    },
+    {
+      "id": "faq-4",
+      "question": "Is there a mobile app available?",
+      "answer": "Yes! Our mobile app is available for both iOS and Android. Download it from the App Store or Google Play Store.",
+      "answer_html": "<p>Yes! Our mobile app is available for both <strong>iOS</strong> and <strong>Android</strong>. Download it from the App Store or Google Play Store.</p>",
+      "tags": [
+        "mobile",
+        "app",
+        "features"
+      ],
+      "category": "Features",
+      "order": 4
+    },
+    {
+      "id": "faq-5",
+      "question": "How do I export my data?",
+      "answer": "To export your data:\n1. Go to Settings > Data & Privacy\n2. Click 'Export Data'\n3. Select the data you want to export\n4. Click 'Generate Export'\n5. You'll receive an email when it's ready",
+      "answer_html": "<p>To export your data:</p><ol><li>Go to Settings > Data & Privacy</li><li>Click 'Export Data'</li><li>Select the data you want to export</li><li>Click 'Generate Export'</li><li>You'll receive an email when it's ready</li></ol>",
+      "tags": [
+        "data",
+        "export",
+        "privacy"
+      ],
+      "category": "Privacy",
+      "order": 5
+    }
+  ]
+}

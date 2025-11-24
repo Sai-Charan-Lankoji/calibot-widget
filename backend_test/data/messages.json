@@ -1,0 +1,23 @@
+{
+  "0b1f7e2c-3d7c-4170-8e8d-8f4e7e3e9814": [
+    {
+      "id": "7331880d-139a-428b-88bf-7624c8e09e30",
+      "conversation_id": "0b1f7e2c-3d7c-4170-8e8d-8f4e7e3e9814",
+      "sender_type": "USER",
+      "content": {
+        "text": "supp\\"
+      },
+      "timestamp": "2025-11-21T09:34:44.615Z"
+    },
+    {
+      "id": "48c00ef7-9426-49a0-abac-18821ff74fe0",
+      "conversation_id": "0b1f7e2c-3d7c-4170-8e8d-8f4e7e3e9814",
+      "sender_type": "BOT",
+      "content": {
+        "text": "That's a great question! Here's what I can tell you about that..."
+      },
+      "timestamp": "2025-11-21T09:34:46.421Z"
+    }
+  ],
+  "6eee61ef-c6a7-43d8-b837-2d46ebc18887": []
+}

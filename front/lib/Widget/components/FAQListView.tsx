@@ -35,7 +35,7 @@ export const FAQListView: React.FC<FAQListViewProps> = ({
     return faqs.filter(faq => 
       faq.question.toLowerCase().includes(query) ||
       faq.answer.toLowerCase().includes(query) ||
-      faq.tags.some(tag => tag.toLowerCase().includes(query))
+      faq.tags?.some(tag => tag.toLowerCase().includes(query))
     );
   }, [faqs, searchQuery]);
 

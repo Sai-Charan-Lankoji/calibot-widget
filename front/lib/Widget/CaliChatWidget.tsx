@@ -57,7 +57,7 @@ function hexToHSL(hex: string): { h: number; s: number; l: number } {
   const b = parseInt(hex.substring(4, 6), 16) / 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
+  let h = 0, s = 0,  l = (max + min) / 2;
   if (max !== min) {
     const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
@@ -121,6 +121,15 @@ export const CaliChatWidget: React.FC<WidgetConfig> = ({
           document.documentElement.style.setProperty('--color-primary-hover', colors.primaryHover);
           document.documentElement.style.setProperty('--color-primary-content', colors.primaryContent);
         }
+
+        if (data.bot.theme_config?.fontFamily) {
+          document.documentElement.style.setProperty('--font-family', data.bot.theme_config.fontFamily);
+        }
+        
+        if (data.bot.theme_config?.borderRadius) {
+          document.documentElement.style.setProperty('--radius', data.bot.theme_config.borderRadius);
+        }
+
       } catch (error) {
         console.error('Widget initialization error:', error);
         setState(prev => ({ ...prev, bot: DEFAULT_BOT_CONFIG, faqs: DEFAULT_FAQS }));
