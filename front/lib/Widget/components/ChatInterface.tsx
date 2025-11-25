@@ -1,35 +1,38 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useOptimistic, useTransition, useEffectEvent, Activity } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, useTransition } from "react";
 import { X, Send } from "lucide-react";
-import { FAQ, Conversation, VisitorInfo } from "@/types";
 import { cn } from "../utils/cn";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
+import { ConversationalQuestion } from "./ConversationalQuestion";
+import { useChat } from "../hooks/useChat";
+import { useLiveChat } from "../hooks/useLiveChat";
 
 type BubbleMessage = {
   id: string;
-  type: 'bot' | 'user' | 'faq-list' | 'faq-answer' | 'action-buttons' | 'agent';
+  type: 'bot' | 'user' | 'conversational-question' | 'action-buttons' | 'agent';
   content: string;
   timestamp: string;
-  faqs?: FAQ[];
   actions?: Array<{ label: string; onClick: () => void }>;
+  question?: string;
+  options?: string[];
+  currentRank?: number;
   isPending?: boolean;
   agentName?: string;
 };
 
-type ChatStep = 'welcome' | 'showing-faqs' | 'showing-faq-detail' | 'asking-name' | 'asking-email' | 'chatting';
+type ChatStep = 'welcome' | 'asking-name' | 'asking-email' | 'chatting';
 
 interface ChatInterfaceProps {
   botName: string;
   welcomeMessage?: string;
   avatarSrc?: string;
-  faqs: FAQ[];
   apiBaseUrl: string;
   botId: string;
   onClose: () => void;
 }
 
-// Memoized message components
+// Memoized message components (unchanged)
 const UserMessage = React.memo<{ content: string; isPending?: boolean }>(({ content, isPending }) => (
   <div className="flex justify-end">
     <div className={cn(
@@ -68,39 +71,6 @@ const AgentMessage = React.memo<{ content: string; agentName?: string }>(
   )
 );
 AgentMessage.displayName = 'AgentMessage';
-
-const FAQList = React.memo<{ 
-  faqs: FAQ[]; 
-  onSelect: (faq: FAQ) => void; 
-  message: string;
-  avatarSrc?: string;
-}>(({ faqs, onSelect, message, avatarSrc }) => (
-  <div className="flex items-start gap-2">
-    {avatarSrc && <Avatar src={avatarSrc} fallback="B" size="sm" />}
-    <div className="flex-1 space-y-2">
-      <div className="bg-base-100 px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm border border-base max-w-[85%]">
-        <p className="text-sm text-base-content">{message}</p>
-      </div>
-      <div className="space-y-1.5">
-        {faqs.map((faq) => (
-          <button
-            key={faq.id}
-            onClick={() => onSelect(faq)}
-            className={cn(
-              "w-full text-left px-3 py-2.5 rounded-lg text-sm",
-              "bg-base-100 border border-base hover:border-primary/30",
-              "hover:bg-base-200 transition-all",
-              "focus:outline-none focus:ring-2 focus:ring-primary/20"
-            )}
-          >
-            <span className="text-base-content font-medium">{faq.question}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-));
-FAQList.displayName = 'FAQList';
 
 const ActionButtons = React.memo<{ 
   actions: Array<{ label: string; onClick: () => void }>;
@@ -145,61 +115,59 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   botName,
   welcomeMessage,
   avatarSrc,
-  faqs,
   apiBaseUrl,
   botId,
-  onClose
+  onClose,
 }) => {
   const [messages, setMessages] = useState<BubbleMessage[]>([]);
-  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
-    messages,
-    (state, newMessage: BubbleMessage) => [...state, { ...newMessage, isPending: true }]
-  );
-  
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [currentStep, setCurrentStep] = useState<ChatStep>('welcome');
-  const [visitorInfo, setVisitorInfo] = useState<Partial<VisitorInfo>>({});
-  const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [visitorInfo, setVisitorInfo] = useState<{ name?: string; email?: string }>({});
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const timersRef = useRef<Set<number>>(new Set());
-  const abortControllerRef = useRef<AbortController | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Stable ID generator using crypto.randomUUID()
-  const genId = useCallback(() => crypto.randomUUID(), []);
-
-  // React 19.2: useEffectEvent for non-reactive scroll behavior
-  const scrollToBottom = useEffectEvent(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Use custom hooks
+  const chat = useChat({
+    botId,
+    apiBaseUrl,
+    onError: (error) => console.error('Chat error:', error)
   });
 
-  // Cleanup on unmount
+  const liveChat = useLiveChat({
+    botId,
+    apiBaseUrl,
+    onError: (error) => console.error('Live chat error:', error)
+  });
+
+  const genId = useCallback(() => crypto.randomUUID(), []);
+
+  const scrollToBottom = useCallback(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
   useEffect(() => {
     return () => {
       timersRef.current.forEach(timer => clearTimeout(timer));
       timersRef.current.clear();
-      abortControllerRef.current?.abort();
     };
   }, []);
 
-  // Auto-scroll when messages change (using useEffectEvent)
   useEffect(() => {
     scrollToBottom();
-  }, [optimisticMessages]);
+  }, [messages, scrollToBottom]);
 
-  // React 19.2: useEffectEvent for timer management (no deps issues)
-  const setManagedTimeout = useEffectEvent((fn: () => void, delay: number) => {
+  const setManagedTimeout = useCallback((fn: () => void, delay: number) => {
     const timer = window.setTimeout(() => {
       fn();
       timersRef.current.delete(timer);
     }, delay);
     timersRef.current.add(timer);
     return timer;
-  });
+  }, []);
 
-  // Add messages with optimistic updates
   const addBotMessage = useCallback((
     content: string, 
     type: BubbleMessage['type'] = 'bot', 
@@ -215,25 +183,111 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setMessages(prev => [...prev, msg]);
   }, [genId]);
 
-  const addUserMessage = useCallback((content: string) => {
+  const addUserMessage = useCallback((content: string, isPending = false) => {
     const msg: BubbleMessage = {
       id: genId(),
       type: 'user',
       content,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      isPending
     };
-    
-    // Optimistic update
-    addOptimisticMessage(msg);
-    
-    // Actual state update
-    startTransition(() => {
-      setMessages(prev => [...prev, msg]);
-    });
-  }, [genId, addOptimisticMessage]);
+    setMessages(prev => [...prev, msg]);
+    return msg;
+  }, [genId]);
 
-  // Handlers with useEffectEvent (no exhaustive deps)
-  const handleContactSupport = useEffectEvent(() => {
+  // Initialize chat
+  useEffect(() => {
+    const initialize = async () => {
+      try {
+        const response = await chat.startChat();
+        
+        if (!response) return;
+
+        // Add welcome message
+        const welcomeMsg: BubbleMessage = {
+          id: genId(),
+          type: 'bot',
+          content: response.greeting || welcomeMessage || `Hi! I'm ${botName}`,
+          timestamp: new Date().toISOString()
+        };
+
+        setManagedTimeout(() => setMessages([welcomeMsg]), 200);
+
+        // Add first question if available
+        if (response.has_questions && response.next_question) {
+          setManagedTimeout(() => {
+            addBotMessage('', 'conversational-question', {
+              question: response.next_question!.question,
+              options: response.next_question!.options || [],
+              currentRank: response.next_question!.rank
+            });
+          }, 500);
+        } else {
+          // No questions available - show contact support
+          setManagedTimeout(() => {
+            addBotMessage('', 'action-buttons', {
+              actions: [{ 
+                label: '💬 Contact Support', 
+                onClick: handleContactSupport 
+              }]
+            });
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Failed to initialize chat:', error);
+        addBotMessage('Sorry, something went wrong. Please try again later.', 'bot');
+      }
+    };
+
+    initialize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle option selection in conversational flow
+  const handleOptionSelect = useCallback(async (option: string) => {
+    addUserMessage(option);
+    setIsTyping(true);
+
+    try {
+      const response = await chat.sendMessage(option);
+      setIsTyping(false);
+
+      // Show acknowledgment
+      if (response.acknowledged) {
+        addBotMessage(response.acknowledged, 'bot');
+      }
+
+      // Show next question
+      if (response.nextQuestion) {
+        setManagedTimeout(() => {
+          addBotMessage('', 'conversational-question', {
+            question: response.nextQuestion!.question,
+            options: response.nextQuestion!.options || [],
+            currentRank: response.nextQuestion!.rank
+          });
+        }, 400);
+      } 
+      // Conversation ended
+      else if (response.ended) {
+        addBotMessage(response.endMessage || 'Thank you!', 'bot');
+        
+        setManagedTimeout(() => {
+          addBotMessage('', 'action-buttons', {
+            actions: [
+              { label: '🔄 Start Over', onClick: handleRestart },
+              { label: '💬 Contact Support', onClick: handleContactSupport }
+            ]
+          });
+        }, 500);
+      }
+    } catch (error: any) {
+      setIsTyping(false);
+      addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
+    }
+  }, [chat, addUserMessage, addBotMessage, setManagedTimeout]);
+
+  // Handle contact support
+  const handleContactSupport = useCallback(() => {
     addUserMessage('I want to contact support');
     setCurrentStep('asking-name');
     setIsTyping(true);
@@ -242,284 +296,127 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsTyping(false);
       addBotMessage("I'd be happy to connect you with our team! First, what's your name?", 'bot');
     }, 600);
-  });
+  }, [addUserMessage, setManagedTimeout, addBotMessage]);
 
-  const handleFaqHelpful = useEffectEvent(() => {
-    addUserMessage('This helped, thanks!');
-    setIsTyping(true);
-    
-    setManagedTimeout(() => {
-      setIsTyping(false);
-      addBotMessage('Great! I\'m glad I could help. Is there anything else?', 'bot');
-      
-      setManagedTimeout(() => {
-        addBotMessage('', 'action-buttons', {
-          actions: [
-            { label: '← Back to FAQs', onClick: handleBackToFaqs },
-            { label: '💬 Contact Support', onClick: handleContactSupport }
-          ]
-        });
-      }, 300);
-    }, 400);
-  });
-
-  const handleBackToFaqs = useEffectEvent(() => {
-    addUserMessage('Show me FAQs again');
-    setCurrentStep('showing-faqs');
-    setIsTyping(true);
-    
-    setManagedTimeout(() => {
-      setIsTyping(false);
-      addBotMessage('Here are the common questions:', 'faq-list', { faqs });
-      
-      setManagedTimeout(() => {
-        addBotMessage('', 'action-buttons', {
-          actions: [{ label: '💬 Contact Support', onClick: handleContactSupport }]
-        });
-      }, 300);
-    }, 300);
-  });
-
-  const handleFaqClick = useEffectEvent((faq: FAQ) => {
-    setCurrentStep('showing-faq-detail');
-    addUserMessage(faq.question);
+  // Handle restart
+  const handleRestart = useCallback(async () => {
+    chat.resetChat();
+    setMessages([]);
+    setCurrentStep('welcome');
     setIsTyping(true);
 
-    setManagedTimeout(() => {
+    try {
+      const response = await chat.startChat();
       setIsTyping(false);
-      addBotMessage(faq.answer, 'faq-answer');
-      
-      setManagedTimeout(() => {
-        addBotMessage('', 'action-buttons', {
-          actions: [
-            { label: '👍 This helped', onClick: handleFaqHelpful },
-            { label: '💬 I need more help', onClick: handleContactSupport },
-            { label: '← Back to FAQs', onClick: handleBackToFaqs }
-          ]
-        });
-      }, 300);
-    }, 700);
-  });
 
-  // Initial welcome flow (only runs once)
-  useEffect(() => {
-    const welcomeMsg: BubbleMessage = {
-      id: genId(),
-      type: 'bot',
-      content: welcomeMessage || `Hi! I'm ${botName}. How can I help you today?`,
-      timestamp: new Date().toISOString()
-    };
+      if (response && response.has_questions) {
+        const welcomeMsg: BubbleMessage = {
+          id: genId(),
+          type: 'bot',
+          content: response.greeting,
+          timestamp: new Date().toISOString()
+        };
+        setMessages([welcomeMsg]);
 
-    const faqPrompt: BubbleMessage = {
-      id: genId(),
-      type: 'faq-list',
-      content: 'Here are some common questions:',
-      timestamp: new Date().toISOString(),
-      faqs
-    };
-
-    const actionButtons: BubbleMessage = {
-      id: genId(),
-      type: 'action-buttons',
-      content: '',
-      timestamp: new Date().toISOString(),
-      actions: [{ label: '💬 Contact Support', onClick: handleContactSupport }]
-    };
-
-    setManagedTimeout(() => setMessages([welcomeMsg]), 200);
-    setManagedTimeout(() => setMessages(prev => [...prev, faqPrompt]), 450);
-    setManagedTimeout(() => setMessages(prev => [...prev, actionButtons]), 700);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        if (response.next_question) {
+          setManagedTimeout(() => {
+            addBotMessage('', 'conversational-question', {
+              question: response.next_question!.question,
+              options: response.next_question!.options || [],
+              currentRank: response.next_question!.rank
+            });
+          }, 400);
+        }
+      }
+    } catch (error) {
+      setIsTyping(false);
+      addBotMessage('Sorry, could not restart. Please try again.', 'bot');
+    }
+  }, [chat, genId, addBotMessage, setManagedTimeout]);
 
   // Form handlers
-  const handleNameSubmit = useEffectEvent(() => {
+  const handleNameSubmit = useCallback(() => {
     if (!inputText.trim()) return;
     
     const name = inputText.trim();
+    setVisitorInfo(prev => ({ ...prev, name }));
+    addUserMessage(name);
+    setInputText('');
+    setCurrentStep('asking-email');
+    setIsTyping(true);
     
-    startTransition(() => {
-      setVisitorInfo(prev => ({ ...prev, name }));
-      addUserMessage(name);
-      setInputText('');
-      setCurrentStep('asking-email');
-      setIsTyping(true);
-      
-      setManagedTimeout(() => {
-        setIsTyping(false);
-        addBotMessage(`Nice to meet you, ${name}! What's your email address?`, 'bot');
-      }, 600);
-    });
-  });
+    setManagedTimeout(() => {
+      setIsTyping(false);
+      addBotMessage(`Nice to meet you, ${name}! What's your email address?`, 'bot');
+    }, 600);
+  }, [inputText, addUserMessage, setManagedTimeout, addBotMessage]);
 
-  // React 19.2: Async action with AbortController + cacheSignal pattern
-  const handleEmailSubmit = useEffectEvent(async () => {
+  const handleEmailSubmit = useCallback(async () => {
     if (!inputText.trim()) return;
     
     const email = inputText.trim();
-    const fullVisitorInfo: VisitorInfo = { name: visitorInfo.name!, email };
+    const fullVisitorInfo = { name: visitorInfo.name!, email };
     
-    // Optimistic update
-    const optimisticMsg: BubbleMessage = {
-      id: genId(),
-      type: 'user',
-      content: email,
-      timestamp: new Date().toISOString()
-    };
-    
-    addOptimisticMessage(optimisticMsg);
+    addUserMessage(email, true);
     setInputText('');
     setIsTyping(true);
 
-    // React 19.2: Use AbortController (similar to cacheSignal pattern)
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
-
     try {
-      const response = await fetch(`${apiBaseUrl}/api/conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortControllerRef.current.signal,
-        body: JSON.stringify({
-          botId,
-          visitor_info: fullVisitorInfo,
-          channel: 'website',
-          attributes: {
-            current_page_url: window.location.href,
-            referrer_url: document.referrer,
-            user_agent: navigator.userAgent
-          }
-        })
-      });
-
-      if (!response.ok) throw new Error('Failed to start conversation');
-
-      const data = await response.json();
+      await liveChat.startConversation(fullVisitorInfo);
       
-      startTransition(() => {
-        setMessages(prev => [...prev, optimisticMsg]);
-        setConversation(data.conversation);
-        setSessionToken(data.sessionToken);
-        setVisitorInfo(fullVisitorInfo);
-        
-        localStorage.setItem(`cali_chat_${botId}`, JSON.stringify({
-          conversationId: data.conversation.id,
-          sessionToken: data.sessionToken,
-          visitorInfo: fullVisitorInfo,
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000
-        }));
-
-        setIsTyping(false);
-        setCurrentStep('chatting');
-        addBotMessage("Perfect! You're now connected. How can I help you?", 'bot');
-      });
-    } catch (error: any) {
-      if (error.name === 'AbortError') return;
-      startTransition(() => {
-        setMessages(prev => [...prev, optimisticMsg]);
-        setIsTyping(false);
-        addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
-      });
+      setVisitorInfo(fullVisitorInfo);
+      setIsTyping(false);
+      setCurrentStep('chatting');
+      addBotMessage("Perfect! You're now connected. How can I help you?", 'bot');
+      
+      // Start polling for agent messages
+      liveChat.startPolling();
+    } catch (error) {
+      setIsTyping(false);
+      addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
     }
-  });
+  }, [inputText, visitorInfo, liveChat, addUserMessage, addBotMessage]);
 
-  const handleChatMessage = useEffectEvent(async () => {
-    if (!inputText.trim() || !conversation || !sessionToken) return;
+  const handleChatMessage = useCallback(async () => {
+    if (!inputText.trim()) return;
 
     const userMsg = inputText.trim();
-    
-    const optimisticMsg: BubbleMessage = {
-      id: genId(),
-      type: 'user',
-      content: userMsg,
-      timestamp: new Date().toISOString()
-    };
-
-    addOptimisticMessage(optimisticMsg);
+    addUserMessage(userMsg, true);
     setInputText('');
     setIsTyping(true);
 
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
-
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/conversations/${conversation.id}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sessionToken}`
-          },
-          signal: abortControllerRef.current.signal,
-          body: JSON.stringify({
-            content: { text: userMsg },
-            sender_type: 'USER'
-          })
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to send message');
-
-      const data = await response.json();
+      const response = await liveChat.sendMessage(userMsg);
+      setIsTyping(false);
       
-      startTransition(() => {
-        setMessages(prev => [...prev, optimisticMsg]);
-        setIsTyping(false);
-        
-        if (data.botResponse) {
-          addBotMessage(data.botResponse.content.text, 'bot');
-        }
-      });
-    } catch (error: any) {
-      if (error.name === 'AbortError') return;
-      startTransition(() => {
-        setMessages(prev => [...prev, optimisticMsg]);
-        setIsTyping(false);
-        addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
-      });
-    }
-  });
-
-  // Polling for new messages (Live Chat)
-  useEffect(() => {
-    if (currentStep !== 'chatting' || !conversation) return;
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`${apiBaseUrl}/api/conversations/${conversation.id}/messages`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        const allMessages = data.messages || [];
-        
-        startTransition(() => {
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const newMessages = allMessages.filter((m: any) => 
-              !existingIds.has(m.id) && (m.sender_type === 'AGENT' || m.sender_type === 'BOT')
-            );
-
-            if (newMessages.length === 0) return prev;
-
-            const newBubbleMessages: BubbleMessage[] = newMessages.map((m: any) => ({
-              id: m.id,
-              type: m.sender_type === 'AGENT' ? 'agent' : 'bot',
-              content: m.content.text,
-              timestamp: m.timestamp,
-              agentName: m.agent_info?.name
-            }));
-
-            return [...prev, ...newBubbleMessages];
-          });
-        });
-      } catch (error) {
-        console.error('Polling error:', error);
+      if (response?.botResponse) {
+        addBotMessage(response.botResponse.content.text, 'bot');
       }
-    }, 3000);
+    } catch (error) {
+      setIsTyping(false);
+      addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
+    }
+  }, [inputText, liveChat, addUserMessage, addBotMessage]);
 
-    return () => clearInterval(pollInterval);
-  }, [currentStep, conversation, apiBaseUrl]);
+  // Handle live chat messages from polling
+  useEffect(() => {
+    if (liveChat.messages.length === 0) return;
+
+    const existingIds = new Set(messages.map(m => m.id));
+    const newMessages = liveChat.messages.filter(msg => !existingIds.has(msg.id));
+
+    if (newMessages.length > 0) {
+      const newBubbleMessages: BubbleMessage[] = newMessages.map(msg => ({
+        id: msg.id,
+        type: msg.sender_type === 'AGENT' ? 'agent' : 'bot',
+        content: msg.content.text,
+        timestamp: msg.timestamp,
+        agentName: msg.agent_info?.name
+      }));
+
+      setMessages(prev => [...prev, ...newBubbleMessages]);
+    }
+  }, [liveChat.messages, messages]);
 
   const handleSubmit = useCallback(() => {
     if (!inputText.trim()) return;
@@ -575,16 +472,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <ScrollArea.Root className="flex-1 overflow-hidden bg-base-200">
         <ScrollArea.Viewport className="w-full h-full">
           <div className="p-4 space-y-3">
-            {optimisticMessages.map((message) => (
+            {messages.map((message) => (
               <div key={message.id} className="widget-fade-in">
                 {message.type === 'user' ? (
                   <UserMessage content={message.content} isPending={message.isPending} />
-                ) : message.type === 'faq-list' ? (
-                  <FAQList 
-                    faqs={message.faqs || []} 
-                    onSelect={handleFaqClick}
-                    message={message.content}
+                ) : message.type === 'conversational-question' ? (
+                  <ConversationalQuestion
+                    question={message.question || ''}
+                    options={message.options || []}
                     avatarSrc={avatarSrc}
+                    botName={botName}
+                    onSelectOption={handleOptionSelect}
                   />
                 ) : message.type === 'action-buttons' ? (
                   <ActionButtons actions={message.actions || []} avatarSrc={avatarSrc} />
@@ -603,11 +501,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             ))}
 
-            {/* React 19.2: Activity API for typing indicator */}
-            <Activity mode={isTyping ? 'visible' : 'hidden'}>
-              <TypingIndicator avatarSrc={avatarSrc} botName={botName} />
-            </Activity>
-
+            {isTyping && <TypingIndicator avatarSrc={avatarSrc} botName={botName} />}
             <div ref={scrollRef} />
           </div>
         </ScrollArea.Viewport>
@@ -617,8 +511,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
 
-      {/* Input - React 19.2: Activity API to preserve input state */}
-      <Activity mode={showInput ? 'visible' : 'hidden'}>
+      {/* Input */}
+      {showInput && (
         <div className="p-4 border-t border-base bg-base-100">
           <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             <div className="flex items-end gap-2">
@@ -628,7 +522,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyPress}
                 rows={1}
-                disabled={isPending}
+                disabled={isPending || chat.isLoading || liveChat.isConnecting}
                 className={cn(
                   "flex-1 px-4 py-3 rounded-xl border border-base resize-none bg-base-100 text-base-content",
                   "text-sm placeholder:text-neutral min-h-11 max-h-32",
@@ -636,19 +530,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   "disabled:opacity-50 disabled:cursor-not-allowed"
                 )}
               />
-             <Button
-  type="submit"
-  disabled={!inputText.trim() || isPending}
-  variant="primary"
-  isLoading={isPending}
-  className="h-11 w-11 p-0 flex items-center justify-center"
->
-  <Send className="h-5 w-5" />
-</Button>
+              <Button
+                type="submit"
+                disabled={!inputText.trim() || isPending || chat.isLoading || liveChat.isConnecting}
+                variant="primary"
+                isLoading={isPending || chat.isLoading || liveChat.isConnecting}
+                className="h-11 w-11 p-0 flex items-center justify-center"
+              >
+                <Send className="h-5 w-5" />
+              </Button>
             </div>
           </form>
         </div>
-      </Activity>
+      )}
     </div>
   );
 };

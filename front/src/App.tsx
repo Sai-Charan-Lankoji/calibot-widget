@@ -6,15 +6,23 @@ interface BotConfig {
   id: string;
   bot_name: string;
   welcome_message: string;
+  has_live_chat_agents? : boolean;
+  auto_assign_to_agent?: boolean;
+  agent_transfer_enabled?: boolean;
+  has_ai_assistance?: boolean;
+  fallback_to_agent?: boolean;
+  file_upload_enabled?: boolean;
   theme_config: {
-    primaryColor: string;
+    primaryColor?: string;
     position: 'bottom-right' | 'bottom-left';
     avatarSrc: string | null;
+    borderRadius?: string | null;
+    fontFamily?: string | null;
   };
   feature_config: {
-    has_live_chat_agents: boolean;
-    agent_transfer_enabled: boolean;
-    file_upload_enabled: boolean;
+    has_live_chat_agents?: boolean | null;
+    agent_transfer_enabled?: boolean | null;
+    file_upload_enabled?: boolean | null;
   };
 }
 
@@ -33,9 +41,17 @@ interface Conversation {
   };
 }
 
+// Default theme configuration for fallback
+const DEFAULT_THEME_CONFIG = {
+  primaryColor: '#3B82F6',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  borderRadius: '1rem',
+  position: 'bottom-right' as const
+};
+
 function App() {
-  const [botId] = useState("demo-bot-123");
-  const [apiBaseUrl] = useState("http://localhost:3001");
+  const [botId] = useState("bbf342b4-832f-4793-93c3-23d1c91adf95");
+  const [apiBaseUrl] = useState("http://localhost:3002");
   
   const [config, setConfig] = useState<BotConfig | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -46,21 +62,40 @@ function App() {
   // Load config from backend
   useEffect(() => {
     loadConfig();
-    loadConversations();
-    
-    // Poll for new conversations every 5 seconds
-    const interval = setInterval(loadConversations, 5000);
-    return () => clearInterval(interval);
   }, []);
+
+  // Poll conversations only when on conversations tab
+  useEffect(() => {
+    if (activeTab === 'conversations') {
+      loadConversations();
+      const interval = setInterval(loadConversations, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
   const loadConfig = async () => {
     try {
       setIsLoading(true);
       const response = await fetch(`${apiBaseUrl}/api/widget/init/${botId}`);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      
       const data = await response.json();
-      setConfig(data.bot);
+      
+      // Merge backend theme config with defaults
+      const mergedThemeConfig = {
+        ...DEFAULT_THEME_CONFIG,
+        ...(data.bot.theme_config || {})
+      };
+      
+      const botWithDefaults = {
+        ...data.bot,
+        theme_config: mergedThemeConfig
+      };
+      
+      setConfig(botWithDefaults);
     } catch (error) {
       console.error('Failed to load config:', error);
+      alert(`Failed to load config: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -288,7 +323,7 @@ function App() {
                 <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                   <input 
                     type="checkbox" 
-                    checked={config.feature_config.has_live_chat_agents}
+                    checked={config.has_live_chat_agents || false}
                     onChange={(e) => setConfig(prev => prev ? {
                       ...prev,
                       feature_config: { ...prev.feature_config, has_live_chat_agents: e.target.checked }
@@ -303,7 +338,7 @@ function App() {
                 <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                   <input 
                     type="checkbox" 
-                    checked={config.feature_config.agent_transfer_enabled}
+                    checked={config.agent_transfer_enabled || false}
                     onChange={(e) => setConfig(prev => prev ? {
                       ...prev,
                       feature_config: { ...prev.feature_config, agent_transfer_enabled: e.target.checked }
@@ -318,7 +353,7 @@ function App() {
                 <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                   <input 
                     type="checkbox" 
-                    checked={config.feature_config.file_upload_enabled}
+                    checked={config.file_upload_enabled || false}
                     onChange={(e) => setConfig(prev => prev ? {
                       ...prev,
                       feature_config: { ...prev.feature_config, file_upload_enabled: e.target.checked }
@@ -436,7 +471,7 @@ function App() {
                           });
                           input.value = '';
                           loadConversations(); // Refresh list
-                        } catch (err) {
+                        } catch {
                           alert('Failed to send agent message');
                         }
                       }}
