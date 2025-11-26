@@ -95,9 +95,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   return (
-    <div className="w-[380px] h-[600px] rounded-2xl bg-base-100 shadow-2xl flex flex-col overflow-hidden border border-base">
+    <div className="w-[380px] h-[600px] rounded-2xl bg-theme-base-100 shadow-2xl flex flex-col overflow-hidden border border-theme-base">
       {/* Header - Using primary colors */}
-      <div className="flex items-center justify-between p-4 bg-primary text-primary-content">
+      <div className="flex items-center justify-between p-4 bg-theme-primary text-theme-primary-content">
         <div className="flex items-center gap-3">
           <div className="relative">
             {avatarSrc ? (
@@ -111,7 +111,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {botName.charAt(0)}
               </div>
             )}
-            <div className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-[hsl(var(--primary))]" />
+            <div className="absolute bottom-0 right-0 w-3 h-3 bg-theme-success rounded-full border-2 border-theme-primary" />
           </div>
           <div>
             <h3 className="font-semibold text-sm">{botName}</h3>
@@ -129,18 +129,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
       </div>
 
       {/* Messages - Using base colors */}
-      <ScrollArea.Root className="flex-1 overflow-hidden bg-base-200">
+      <ScrollArea.Root className="flex-1 overflow-hidden bg-theme-base-200">
         <ScrollArea.Viewport className="w-full h-full">
           <div className="p-4 space-y-4">
             {messages.length === 0 && (
               <div className="text-center py-12">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-secondary flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-theme-secondary flex items-center justify-center">
                   <span className="text-2xl">👋</span>
                 </div>
-                <p className="font-medium text-base-content mb-1">
+                <p className="font-medium text-theme-base-content mb-1">
                   Welcome, {visitorInfo.name}!
                 </p>
-                <p className="text-sm text-neutral">
+                <p className="text-sm text-theme-neutral">
                   How can we help you today?
                 </p>
               </div>
@@ -158,13 +158,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   className={cn(
                     "max-w-[85%] px-4 py-2.5 rounded-2xl text-sm shadow-sm",
                     message.sender_type === 'USER'
-                      ? "bg-primary text-primary-content rounded-br-md"
-                      : "bg-base-100 border border-base text-base-content rounded-bl-md"
+                      ? "bg-theme-primary text-theme-primary-content rounded-br-md"
+                      : "bg-theme-base-100 border border-theme-base text-theme-base-content rounded-bl-md"
                   )}
                 >
                   {message.content.text}
                 </div>
-                <div className="text-xs text-neutral mt-1.5 px-1">
+                <div className="text-xs text-theme-neutral mt-1.5 px-1">
                   {new Date(message.timestamp).toLocaleTimeString([], { 
                     hour: '2-digit', 
                     minute: '2-digit' 
@@ -175,11 +175,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
             {isTyping && (
               <div className="flex items-start widget-fade-in">
-                <div className="bg-base-100 border border-base px-5 py-3 rounded-2xl rounded-bl-md shadow-sm">
+                <div className="bg-theme-base-100 border border-theme-base px-5 py-3 rounded-2xl rounded-bl-md shadow-sm">
                   <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-neutral rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 bg-neutral rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 bg-neutral rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <div className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
@@ -192,12 +192,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
           className="flex touch-none select-none w-2 bg-transparent p-0.5"
           orientation="vertical"
         >
-          <ScrollArea.Thumb className="relative flex-1 rounded-full bg-neutral/30 hover:bg-neutral/50 transition-colors" />
+          <ScrollArea.Thumb className="relative flex-1 rounded-full bg-theme-neutral/30 hover:bg-theme-neutral/50 transition-colors" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
 
       {/* Input - Using base colors */}
-      <div className="p-4 border-t border-base bg-base-100">
+      <div className="p-4 border-t border-theme-base bg-theme-base-100">
         <div className="flex items-end gap-2">
           <div className="flex-1 relative">
             <textarea
@@ -207,8 +207,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
               onKeyDown={handleKeyPress}
               rows={1}
               className={cn(
-                "w-full px-4 py-3 pr-12 rounded-xl border border-base resize-none bg-base-100 text-base-content",
-                "text-sm placeholder:text-neutral",
+                "w-full px-4 py-3 pr-12 rounded-xl border border-theme-base resize-none bg-theme-base-100 text-theme-base-content",
+                "text-sm placeholder:text-theme-neutral",
                 "focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))]",
                 "transition-all max-h-32"
               )}
@@ -223,8 +223,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
             disabled={!inputText.trim()}
             className={cn(
               "h-11 w-11 rounded-xl flex items-center justify-center shrink-0",
-              "bg-primary text-primary-content shadow-sm",
-              "hover:bg-primary-hover active:scale-95 transition-all",
+              "bg-theme-primary text-theme-primary-content shadow-sm",
+              "hover:brightness-110 active:scale-95 transition-all",
               "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[hsl(var(--primary))]",
               "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
             )}
@@ -232,7 +232,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <Send className="h-5 w-5" />
           </button>
         </div>
-        <p className="text-xs text-neutral mt-2 text-center">
+        <p className="text-xs text-theme-neutral mt-2 text-center">
           Press Enter to send, Shift + Enter for new line
         </p>
       </div>

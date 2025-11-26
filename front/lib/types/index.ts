@@ -190,3 +190,4 @@ export interface WidgetConfig {
   avatarSrc?: string;
   useFavicon?: boolean;
 }
+

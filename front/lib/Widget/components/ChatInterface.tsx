@@ -1,115 +1,119 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useTransition } from "react";
-import { X, Send } from "lucide-react";
-import { cn } from "../utils/cn";
-import * as ScrollArea from "@radix-ui/react-scroll-area";
-import { Avatar } from "./ui/Avatar";
-import { Button } from "./ui/Button";
-import { ConversationalQuestion } from "./ConversationalQuestion";
-import { useChat } from "../hooks/useChat";
-import { useLiveChat } from "../hooks/useLiveChat";
+"use client"
+
+import React, { useState, useEffect, useRef, useCallback, useOptimistic, useTransition } from "react"
+import { X, Send } from "lucide-react"
+import type { Conversation, VisitorInfo, BotConfiguration } from "@/types"
+import { cn } from "../utils/cn"
+import * as ScrollArea from "@radix-ui/react-scroll-area"
+import { Avatar } from "./ui/Avatar"
+import { Button } from "./ui/Button"
+import { ConversationalQuestion } from "./ConversationalQuestion"
+import { type ThemeConfig, applyThemeToElement, extractThemeFromBot, DEFAULT_THEME } from "../utils/theme-manager"
+// import "../theme-variables.css"
+import "../globals.css"
 
 type BubbleMessage = {
-  id: string;
-  type: 'bot' | 'user' | 'conversational-question' | 'action-buttons' | 'agent';
-  content: string;
-  timestamp: string;
-  actions?: Array<{ label: string; onClick: () => void }>;
-  question?: string;
-  options?: string[];
-  currentRank?: number;
-  isPending?: boolean;
-  agentName?: string;
-};
-
-type ChatStep = 'welcome' | 'asking-name' | 'asking-email' | 'chatting';
-
-interface ChatInterfaceProps {
-  botName: string;
-  welcomeMessage?: string;
-  avatarSrc?: string;
-  apiBaseUrl: string;
-  botId: string;
-  onClose: () => void;
+  id: string
+  type: "bot" | "user" | "action-buttons" | "agent" | "conversational-question"
+  content: string
+  timestamp: string
+  actions?: Array<{ label: string; onClick: () => void }>
+  question?: string
+  options?: string[]
+  currentRank?: number
+  isPending?: boolean
+  agentName?: string
 }
 
-// Memoized message components (unchanged)
+type ChatStep = "welcome" | "asking-name" | "asking-email" | "chatting"
+
+interface ChatInterfaceProps {
+  botName: string
+  welcomeMessage?: string
+  avatarSrc?: string
+  apiBaseUrl: string
+  botId: string
+  onClose: () => void
+  botConfig?: BotConfiguration
+  featureChat?: any
+  featureUI?: any
+}
+
 const UserMessage = React.memo<{ content: string; isPending?: boolean }>(({ content, isPending }) => (
-  <div className="flex justify-end">
-    <div className={cn(
-      "max-w-[80%] bg-primary text-primary-content px-4 py-2.5 rounded-2xl rounded-br-md shadow-sm",
-      isPending && "opacity-60 animate-pulse"
-    )}>
-      <p className="text-sm">{content}</p>
+  <div className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div
+      className={cn(
+        "max-w-[80%] bg-theme-primary text-theme-primary-content px-4 py-3 rounded-2xl rounded-br-md shadow-lg",
+        isPending && "opacity-60 animate-pulse",
+      )}
+    >
+      <p className="text-sm font-medium leading-relaxed">{content}</p>
     </div>
   </div>
-));
-UserMessage.displayName = 'UserMessage';
+))
+UserMessage.displayName = "UserMessage"
 
 const BotMessage = React.memo<{ content: string; avatarSrc?: string; botName: string }>(
   ({ content, avatarSrc, botName }) => (
-    <div className="flex items-start gap-2">
-      <Avatar src={avatarSrc} fallback={botName} size="sm" />
-      <div className="max-w-[85%] bg-base-100 px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm border border-base">
-        <p className="text-sm text-base-content whitespace-pre-wrap">{content}</p>
+    <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <Avatar src={avatarSrc} fallback={botName} size="sm" className="flex-shrink-0 mt-1" />
+      <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-base">
+        <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">{content}</p>
       </div>
     </div>
-  )
-);
-BotMessage.displayName = 'BotMessage';
+  ),
+)
+BotMessage.displayName = "BotMessage"
 
-const AgentMessage = React.memo<{ content: string; agentName?: string }>(
-  ({ content, agentName }) => (
-    <div className="flex items-start gap-2">
-      <div className="w-8 h-8 rounded-full bg-primary text-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-white shadow-sm">
-        {agentName?.charAt(0) || 'A'}
-      </div>
-      <div className="max-w-[85%] bg-white px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm border border-primary/20">
-        <p className="text-xs font-semibold text-primary mb-1">{agentName || 'Support Agent'}</p>
-        <p className="text-sm text-base-content whitespace-pre-wrap">{content}</p>
-      </div>
+const AgentMessage = React.memo<{ content: string; agentName?: string }>(({ content, agentName }) => (
+  <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="w-8 h-8 rounded-full bg-theme-accent text-theme-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-theme-base-100 shadow-md">
+      {agentName?.charAt(0) || "A"}
     </div>
-  )
-);
-AgentMessage.displayName = 'AgentMessage';
+    <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-accent">
+      <p className="text-xs font-semibold text-theme-accent mb-1">{agentName || "Support Agent"}</p>
+      <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">{content}</p>
+    </div>
+  </div>
+))
+AgentMessage.displayName = "AgentMessage"
 
-const ActionButtons = React.memo<{ 
-  actions: Array<{ label: string; onClick: () => void }>;
-  avatarSrc?: string;
+const ActionButtons = React.memo<{
+  actions: Array<{ label: string; onClick: () => void }>
+  avatarSrc?: string
 }>(({ actions, avatarSrc }) => (
-  <div className="flex items-start gap-2">
-    {avatarSrc && <div className="w-7" />}
-    <div className="flex flex-wrap gap-2">
+  <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    {avatarSrc && <div className="w-8 flex-shrink-0" />}
+    <div className="flex flex-wrap gap-2.5">
       {actions.map((action, idx) => (
         <Button
           key={idx}
-          variant="secondary"
+          variant="outline"
           size="sm"
           onClick={action.onClick}
-          className="rounded-full"
+          className="rounded-full px-4 py-2 transition-all duration-200 hover:opacity-80 bg-theme-base-200 border border-theme-base text-theme-base-content"
         >
           {action.label}
         </Button>
       ))}
     </div>
   </div>
-));
-ActionButtons.displayName = 'ActionButtons';
+))
+ActionButtons.displayName = "ActionButtons"
 
-const TypingIndicator = React.memo<{ avatarSrc?: string; botName: string }>(
-  ({ avatarSrc, botName }) => (
-    <div className="flex items-start gap-2 widget-fade-in">
-      <Avatar src={avatarSrc} fallback={botName} size="sm" />
-      <div className="bg-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-base">
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 bg-neutral/60 rounded-full animate-bounce [animation-delay:-0.3s]" />
-          <span className="w-2 h-2 bg-neutral/60 rounded-full animate-bounce [animation-delay:-0.15s]" />
-          <span className="w-2 h-2 bg-neutral/60 rounded-full animate-bounce" />
-        </div>
+const TypingIndicator = React.memo<{ avatarSrc?: string; botName: string }>(({ avatarSrc, botName }) => (
+  <div className="flex items-start gap-3 widget-fade-in animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <Avatar src={avatarSrc} fallback={botName} size="sm" className="flex-shrink-0" />
+    <div className="bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-base">
+      <div className="flex items-center gap-1.5">
+        <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce [animation-delay:-0.3s]" />
+        <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce [animation-delay:-0.15s]" />
+        <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce" />
       </div>
     </div>
-  )
-);
-TypingIndicator.displayName = 'TypingIndicator';
+  </div>
+))
+TypingIndicator.displayName = "TypingIndicator"
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   botName,
@@ -118,431 +122,593 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   apiBaseUrl,
   botId,
   onClose,
+  botConfig,
+  featureChat,
+  featureUI,
 }) => {
-  const [messages, setMessages] = useState<BubbleMessage[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [currentStep, setCurrentStep] = useState<ChatStep>('welcome');
-  const [visitorInfo, setVisitorInfo] = useState<{ name?: string; email?: string }>({});
-  
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const timersRef = useRef<Set<number>>(new Set());
-  const [isPending, startTransition] = useTransition();
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [messages, setMessages] = useState<BubbleMessage[]>([])
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(messages, (state, newMessage: BubbleMessage) => [
+    ...state,
+    { ...newMessage, isPending: true },
+  ])
 
-  // Use custom hooks
-  const chat = useChat({
-    botId,
-    apiBaseUrl,
-    onError: (error) => console.error('Chat error:', error)
-  });
+  const [inputText, setInputText] = useState("")
+  const [isTyping, setIsTyping] = useState(false)
+  const [currentStep, setCurrentStep] = useState<ChatStep>("welcome")
+  const [visitorInfo, setVisitorInfo] = useState<Partial<VisitorInfo>>({})
+  const [conversation, setConversation] = useState<Conversation | null>(null)
+  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<any>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const timersRef = useRef<Set<number>>(new Set())
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME)
 
-  const liveChat = useLiveChat({
-    botId,
-    apiBaseUrl,
-    onError: (error) => console.error('Live chat error:', error)
-  });
-
-  const genId = useCallback(() => crypto.randomUUID(), []);
+  const genId = useCallback(() => crypto.randomUUID(), [])
 
   const scrollToBottom = useCallback(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [])
 
   useEffect(() => {
     return () => {
-      timersRef.current.forEach(timer => clearTimeout(timer));
-      timersRef.current.clear();
-    };
-  }, []);
+      timersRef.current.forEach((timer) => clearTimeout(timer))
+      timersRef.current.clear()
+      abortControllerRef.current?.abort()
+    }
+  }, [])
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    scrollToBottom()
+  }, [optimisticMessages, scrollToBottom])
 
   const setManagedTimeout = useCallback((fn: () => void, delay: number) => {
     const timer = window.setTimeout(() => {
-      fn();
-      timersRef.current.delete(timer);
-    }, delay);
-    timersRef.current.add(timer);
-    return timer;
-  }, []);
+      fn()
+      timersRef.current.delete(timer)
+    }, delay)
+    timersRef.current.add(timer)
+    return timer
+  }, [])
 
-  const addBotMessage = useCallback((
-    content: string, 
-    type: BubbleMessage['type'] = 'bot', 
-    extraData?: Partial<BubbleMessage>
-  ) => {
-    const msg: BubbleMessage = {
-      id: genId(),
-      type,
-      content,
-      timestamp: new Date().toISOString(),
-      ...extraData
-    };
-    setMessages(prev => [...prev, msg]);
-  }, [genId]);
+  const addBotMessage = useCallback(
+    (content: string, type: BubbleMessage["type"] = "bot", extraData?: Partial<BubbleMessage>) => {
+      const msg: BubbleMessage = {
+        id: genId(),
+        type,
+        content,
+        timestamp: new Date().toISOString(),
+        ...extraData,
+      }
+      setMessages((prev) => [...prev, msg])
+    },
+    [genId],
+  )
 
-  const addUserMessage = useCallback((content: string, isPending = false) => {
-    const msg: BubbleMessage = {
-      id: genId(),
-      type: 'user',
-      content,
-      timestamp: new Date().toISOString(),
-      isPending
-    };
-    setMessages(prev => [...prev, msg]);
-    return msg;
-  }, [genId]);
+  const addUserMessage = useCallback(
+    (content: string) => {
+      const msg: BubbleMessage = {
+        id: genId(),
+        type: "user",
+        content,
+        timestamp: new Date().toISOString(),
+      }
 
-  // Initialize chat
-  useEffect(() => {
-    const initialize = async () => {
+      addOptimisticMessage(msg)
+
+      startTransition(() => {
+        setMessages((prev) => [...prev, msg])
+      })
+    },
+    [genId, addOptimisticMessage],
+  )
+
+  const handleContactSupport = useCallback(() => {
+    addUserMessage("I want to contact support")
+    setCurrentStep("asking-name")
+    setIsTyping(true)
+
+    setManagedTimeout(() => {
+      setIsTyping(false)
+      addBotMessage("I'd be happy to connect you with our team! First, what's your name?", "bot")
+    }, 600)
+  }, [addUserMessage, setManagedTimeout, addBotMessage])
+
+  const handleOptionSelect = useCallback(
+    async (option: string) => {
+      if (!currentQuestion) return
+
+      addUserMessage(option)
+      setIsTyping(true)
+
       try {
-        const response = await chat.startChat();
-        
-        if (!response) return;
+        const response = await fetch(`${apiBaseUrl}/api/chat/${botId}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            selected_option: option,
+            current_rank: currentQuestion.rank,
+          }),
+        })
 
-        // Add welcome message
-        const welcomeMsg: BubbleMessage = {
-          id: genId(),
-          type: 'bot',
-          content: response.greeting || welcomeMessage || `Hi! I'm ${botName}`,
-          timestamp: new Date().toISOString()
-        };
+        if (!response.ok) throw new Error("Failed to send message")
 
-        setManagedTimeout(() => setMessages([welcomeMsg]), 200);
+        const data = await response.json()
+        setIsTyping(false)
 
-        // Add first question if available
-        if (response.has_questions && response.next_question) {
+        if (data.acknowledged) {
+          addBotMessage(data.acknowledged, "bot")
+        }
+
+        if (data.next_question) {
+          setCurrentQuestion(data.next_question)
           setManagedTimeout(() => {
-            addBotMessage('', 'conversational-question', {
-              question: response.next_question!.question,
-              options: response.next_question!.options || [],
-              currentRank: response.next_question!.rank
-            });
-          }, 500);
-        } else {
-          // No questions available - show contact support
+            addBotMessage("", "conversational-question", {
+              question: data.next_question.question,
+              options: data.next_question.options,
+              currentRank: data.next_question.rank,
+            })
+          }, 400)
+        } else if (data.end) {
           setManagedTimeout(() => {
-            addBotMessage('', 'action-buttons', {
-              actions: [{ 
-                label: '💬 Contact Support', 
-                onClick: handleContactSupport 
-              }]
-            });
-          }, 500);
+            addBotMessage(data.message || "Thank you for your responses!", "bot")
+          }, 300)
+
+          // Show transfer to human option if flagged
+          if (data.transfer_to_human) {
+            setManagedTimeout(() => {
+              addBotMessage("", "action-buttons", {
+                actions: [
+                  { label: "👤 Yes, connect me with a specialist", onClick: handleContactSupport },
+                  { label: "🔄 Start Over", onClick: handleRestart },
+                ],
+              })
+            }, 800)
+          } else {
+            setManagedTimeout(() => {
+              addBotMessage("", "action-buttons", {
+                actions: [{ label: "🔄 Start Over", onClick: handleRestart }],
+              })
+            }, 500)
+          }
         }
       } catch (error) {
-        console.error('Failed to initialize chat:', error);
-        addBotMessage('Sorry, something went wrong. Please try again later.', 'bot');
+        console.error("Option selection error:", error)
+        setIsTyping(false)
+        addBotMessage("Sorry, something went wrong. Please try again.", "bot")
       }
-    };
+    },
+    [currentQuestion, addUserMessage, apiBaseUrl, botId, addBotMessage, setManagedTimeout, handleContactSupport],
+  )
 
-    initialize();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle option selection in conversational flow
-  const handleOptionSelect = useCallback(async (option: string) => {
-    addUserMessage(option);
-    setIsTyping(true);
+  const handleRestart = useCallback(async () => {
+    setMessages([])
+    setCurrentStep("welcome")
+    setIsTyping(true)
+    setCurrentQuestion(null)
 
     try {
-      const response = await chat.sendMessage(option);
-      setIsTyping(false);
+      const response = await fetch(`${apiBaseUrl}/api/chat/${botId}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
 
-      // Show acknowledgment
-      if (response.acknowledged) {
-        addBotMessage(response.acknowledged, 'bot');
+      if (!response.ok) throw new Error("Failed to restart chat")
+
+      const data = await response.json()
+      setIsTyping(false)
+
+      const welcomeMsg: BubbleMessage = {
+        id: genId(),
+        type: "bot",
+        content: data.greeting || welcomeMessage || `Hi! I'm ${botName}`,
+        timestamp: new Date().toISOString(),
       }
 
-      // Show next question
-      if (response.nextQuestion) {
+      setMessages([welcomeMsg])
+
+      if (data.has_questions && data.next_question) {
+        setCurrentQuestion(data.next_question)
         setManagedTimeout(() => {
-          addBotMessage('', 'conversational-question', {
-            question: response.nextQuestion!.question,
-            options: response.nextQuestion!.options || [],
-            currentRank: response.nextQuestion!.rank
-          });
-        }, 400);
-      } 
-      // Conversation ended
-      else if (response.ended) {
-        addBotMessage(response.endMessage || 'Thank you!', 'bot');
-        
-        setManagedTimeout(() => {
-          addBotMessage('', 'action-buttons', {
-            actions: [
-              { label: '🔄 Start Over', onClick: handleRestart },
-              { label: '💬 Contact Support', onClick: handleContactSupport }
-            ]
-          });
-        }, 500);
+          addBotMessage("", "conversational-question", {
+            question: data.next_question.question,
+            options: data.next_question.options || [],
+            currentRank: data.next_question.rank,
+          })
+        }, 400)
       }
     } catch (error: any) {
-      setIsTyping(false);
-      addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
+      console.error("Restart chat error:", error)
+      setIsTyping(false)
+      addBotMessage("Sorry, could not restart. Please try again.", "bot",)
     }
-  }, [chat, addUserMessage, addBotMessage, setManagedTimeout]);
+  }, [apiBaseUrl, botId, genId, welcomeMessage, botName, addBotMessage, setManagedTimeout])
 
-  // Handle contact support
-  const handleContactSupport = useCallback(() => {
-    addUserMessage('I want to contact support');
-    setCurrentStep('asking-name');
-    setIsTyping(true);
-    
-    setManagedTimeout(() => {
-      setIsTyping(false);
-      addBotMessage("I'd be happy to connect you with our team! First, what's your name?", 'bot');
-    }, 600);
-  }, [addUserMessage, setManagedTimeout, addBotMessage]);
+  const initializedRef = useRef(false)
 
-  // Handle restart
-  const handleRestart = useCallback(async () => {
-    chat.resetChat();
-    setMessages([]);
-    setCurrentStep('welcome');
-    setIsTyping(true);
+  useEffect(() => {
+    const initializeChat = async () => {
+      if (initializedRef.current) return
+      initializedRef.current = true
 
-    try {
-      const response = await chat.startChat();
-      setIsTyping(false);
+      try {
+        console.log("🚀 Initializing conversational chat...")
 
-      if (response && response.has_questions) {
+        const response = await fetch(`${apiBaseUrl}/api/chat/${botId}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to start chat")
+        }
+
+        const data = await response.json()
+        console.log("✅ Chat initialized:", data)
+
         const welcomeMsg: BubbleMessage = {
           id: genId(),
-          type: 'bot',
-          content: response.greeting,
-          timestamp: new Date().toISOString()
-        };
-        setMessages([welcomeMsg]);
-
-        if (response.next_question) {
-          setManagedTimeout(() => {
-            addBotMessage('', 'conversational-question', {
-              question: response.next_question!.question,
-              options: response.next_question!.options || [],
-              currentRank: response.next_question!.rank
-            });
-          }, 400);
+          type: "bot",
+          content: data.greeting || welcomeMessage || `Hi! I'm ${botName}`,
+          timestamp: new Date().toISOString(),
         }
-      }
-    } catch (error) {
-      setIsTyping(false);
-      addBotMessage('Sorry, could not restart. Please try again.', 'bot');
-    }
-  }, [chat, genId, addBotMessage, setManagedTimeout]);
 
-  // Form handlers
+        setManagedTimeout(() => setMessages([welcomeMsg]), 200)
+
+        if (data.has_questions && data.next_question) {
+          setCurrentQuestion(data.next_question)
+
+          setManagedTimeout(() => {
+            const questionMsg: BubbleMessage = {
+              id: genId(),
+              type: "conversational-question",
+              content: "",
+              question: data.next_question.question,
+              options: data.next_question.options || [],
+              currentRank: data.next_question.rank,
+              timestamp: new Date().toISOString(),
+            }
+            setMessages((prev) => [...prev, questionMsg])
+          }, 500)
+        } else {
+          setManagedTimeout(() => {
+            addBotMessage("", "action-buttons", {
+              actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
+            })
+          }, 500)
+        }
+      } catch (error) {
+        console.error("❌ Failed to initialize chat:", error)
+        initializedRef.current = false // Allow retry on error
+
+        const welcomeMsg: BubbleMessage = {
+          id: genId(),
+          type: "bot",
+          content: welcomeMessage || `Hi! I'm ${botName}. How can I help?`,
+          timestamp: new Date().toISOString(),
+        }
+
+        setManagedTimeout(() => {
+          setMessages([welcomeMsg])
+          addBotMessage("", "action-buttons", {
+            actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
+          })
+        }, 200)
+      }
+    }
+
+    initializeChat()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleNameSubmit = useCallback(() => {
-    if (!inputText.trim()) return;
-    
-    const name = inputText.trim();
-    setVisitorInfo(prev => ({ ...prev, name }));
-    addUserMessage(name);
-    setInputText('');
-    setCurrentStep('asking-email');
-    setIsTyping(true);
-    
-    setManagedTimeout(() => {
-      setIsTyping(false);
-      addBotMessage(`Nice to meet you, ${name}! What's your email address?`, 'bot');
-    }, 600);
-  }, [inputText, addUserMessage, setManagedTimeout, addBotMessage]);
+    if (!inputText.trim()) return
+
+    const name = inputText.trim()
+
+    startTransition(() => {
+      setVisitorInfo((prev) => ({ ...prev, name }))
+      addUserMessage(name)
+      setInputText("")
+      setCurrentStep("asking-email")
+      setIsTyping(true)
+
+      setManagedTimeout(() => {
+        setIsTyping(false)
+        addBotMessage(`Nice to meet you, ${name}! What's your email address?`, "bot")
+      }, 600)
+    })
+  }, [inputText, addUserMessage, setManagedTimeout, addBotMessage])
 
   const handleEmailSubmit = useCallback(async () => {
-    if (!inputText.trim()) return;
-    
-    const email = inputText.trim();
-    const fullVisitorInfo = { name: visitorInfo.name!, email };
-    
-    addUserMessage(email, true);
-    setInputText('');
-    setIsTyping(true);
+    if (!inputText.trim()) return
+
+    const email = inputText.trim()
+    const fullVisitorInfo: VisitorInfo = { name: visitorInfo.name!, email }
+
+    const optimisticMsg: BubbleMessage = {
+      id: genId(),
+      type: "user",
+      content: email,
+      timestamp: new Date().toISOString(),
+    }
+
+    addOptimisticMessage(optimisticMsg)
+    setInputText("")
+    setIsTyping(true)
+
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = new AbortController()
 
     try {
-      await liveChat.startConversation(fullVisitorInfo);
-      
-      setVisitorInfo(fullVisitorInfo);
-      setIsTyping(false);
-      setCurrentStep('chatting');
-      addBotMessage("Perfect! You're now connected. How can I help you?", 'bot');
-      
-      // Start polling for agent messages
-      liveChat.startPolling();
-    } catch (error) {
-      setIsTyping(false);
-      addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
+      const response = await fetch(`${apiBaseUrl}/api/conversations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortControllerRef.current.signal,
+        body: JSON.stringify({
+          botId,
+          visitor_info: fullVisitorInfo,
+          channel: "website",
+          attributes: {
+            current_page_url: window.location.href,
+            referrer_url: document.referrer,
+            user_agent: navigator.userAgent,
+          },
+        }),
+      })
+
+      if (!response.ok) throw new Error("Failed to start conversation")
+
+      const data = await response.json()
+
+      startTransition(() => {
+        setMessages((prev) => [...prev, optimisticMsg])
+        setConversation(data.conversation)
+        setSessionToken(data.sessionToken)
+        setVisitorInfo(fullVisitorInfo)
+
+        localStorage.setItem(
+          `cali_chat_${botId}`,
+          JSON.stringify({
+            conversationId: data.conversation.id,
+            sessionToken: data.sessionToken,
+            visitorInfo: fullVisitorInfo,
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+          }),
+        )
+
+        setIsTyping(false)
+        setCurrentStep("chatting")
+        addBotMessage("Perfect! You're now connected. How can I help you?", "bot")
+      })
+    } catch (error: any) {
+      if (error.name === "AbortError") return
+      startTransition(() => {
+        setMessages((prev) => [...prev, optimisticMsg])
+        setIsTyping(false)
+        addBotMessage("Sorry, something went wrong. Please try again.", "bot")
+      })
     }
-  }, [inputText, visitorInfo, liveChat, addUserMessage, addBotMessage]);
+  }, [inputText, visitorInfo, genId, addOptimisticMessage, apiBaseUrl, botId, addBotMessage])
 
   const handleChatMessage = useCallback(async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !conversation || !sessionToken) return
 
-    const userMsg = inputText.trim();
-    addUserMessage(userMsg, true);
-    setInputText('');
-    setIsTyping(true);
+    const userMsg = inputText.trim()
+
+    const optimisticMsg: BubbleMessage = {
+      id: genId(),
+      type: "user",
+      content: userMsg,
+      timestamp: new Date().toISOString(),
+    }
+
+    addOptimisticMessage(optimisticMsg)
+    setInputText("")
+    setIsTyping(true)
+
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = new AbortController()
 
     try {
-      const response = await liveChat.sendMessage(userMsg);
-      setIsTyping(false);
-      
-      if (response?.botResponse) {
-        addBotMessage(response.botResponse.content.text, 'bot');
-      }
-    } catch (error) {
-      setIsTyping(false);
-      addBotMessage('Sorry, something went wrong. Please try again.', 'bot');
-    }
-  }, [inputText, liveChat, addUserMessage, addBotMessage]);
+      const response = await fetch(`${apiBaseUrl}/api/conversations/${conversation.id}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        signal: abortControllerRef.current.signal,
+        body: JSON.stringify({
+          content: { text: userMsg },
+          sender_type: "USER",
+        }),
+      })
 
-  // Handle live chat messages from polling
+      if (!response.ok) throw new Error("Failed to send message")
+
+      const data = await response.json()
+
+      startTransition(() => {
+        setMessages((prev) => [...prev, optimisticMsg])
+        setIsTyping(false)
+
+        if (data.botResponse) {
+          addBotMessage(data.botResponse.content.text, "bot")
+        }
+      })
+    } catch (error: any) {
+      if (error.name === "AbortError") return
+      startTransition(() => {
+        setMessages((prev) => [...prev, optimisticMsg])
+        setIsTyping(false)
+        addBotMessage("Sorry, something went wrong. Please try again.", "bot")
+      })
+    }
+  }, [inputText, conversation, sessionToken, genId, addOptimisticMessage, apiBaseUrl, addBotMessage])
+
   useEffect(() => {
-    if (liveChat.messages.length === 0) return;
+    if (currentStep !== "chatting" || !conversation) return
 
-    const existingIds = new Set(messages.map(m => m.id));
-    const newMessages = liveChat.messages.filter(msg => !existingIds.has(msg.id));
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/conversations/${conversation.id}/messages`)
+        if (!response.ok) return
 
-    if (newMessages.length > 0) {
-      const newBubbleMessages: BubbleMessage[] = newMessages.map(msg => ({
-        id: msg.id,
-        type: msg.sender_type === 'AGENT' ? 'agent' : 'bot',
-        content: msg.content.text,
-        timestamp: msg.timestamp,
-        agentName: msg.agent_info?.name
-      }));
+        const data = await response.json()
+        const allMessages = data.messages || []
 
-      setMessages(prev => [...prev, ...newBubbleMessages]);
-    }
-  }, [liveChat.messages, messages]);
+        startTransition(() => {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id))
+            const newMessages = allMessages.filter(
+              (m: any) => !existingIds.has(m.id) && (m.sender_type === "AGENT" || m.sender_type === "BOT"),
+            )
 
-  const handleSubmit = useCallback(() => {
-    if (!inputText.trim()) return;
+            if (newMessages.length === 0) return prev
 
+            const newBubbles = newMessages.map((m: any) => ({
+              id: m.id,
+              type: m.sender_type === "AGENT" ? "agent" : "bot",
+              content: m.content?.text || "",
+              timestamp: m.created_at,
+              agentName: m.sender_name,
+            }))
+
+            return [...prev, ...newBubbles]
+          })
+        })
+      } catch (error) {
+        console.error("Polling error:", error)
+      }
+    }, 2000)
+
+    return () => clearInterval(pollInterval)
+  }, [currentStep, conversation, apiBaseUrl])
+
+  const handleSendMessage = useCallback(() => {
     switch (currentStep) {
-      case 'asking-name': return handleNameSubmit();
-      case 'asking-email': return handleEmailSubmit();
-      case 'chatting': return handleChatMessage();
+      case "asking-name":
+        handleNameSubmit()
+        break
+      case "asking-email":
+        handleEmailSubmit()
+        break
+      case "chatting":
+        handleChatMessage()
+        break
     }
-  }, [currentStep, inputText, handleNameSubmit, handleEmailSubmit, handleChatMessage]);
+  }, [currentStep, handleNameSubmit, handleEmailSubmit, handleChatMessage])
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      handleSendMessage()
     }
-  }, [handleSubmit]);
+  }
 
-  const placeholder = useMemo(() => {
-    switch (currentStep) {
-      case 'asking-name': return 'Enter your name...';
-      case 'asking-email': return 'Enter your email...';
-      case 'chatting': return 'Type your message...';
-      default: return 'Type a message...';
+  useEffect(() => {
+    if (botConfig) {
+      const extractedTheme = extractThemeFromBot(botConfig)
+      setTheme(extractedTheme)
+
+      if (containerRef.current) {
+        applyThemeToElement(containerRef.current, extractedTheme)
+      }
     }
-  }, [currentStep]);
-
-  const showInput = useMemo(() => 
-    currentStep === 'asking-name' || currentStep === 'asking-email' || currentStep === 'chatting',
-    [currentStep]
-  );
+  }, [botConfig])
 
   return (
-    <div className="w-[380px] h-[600px] rounded-2xl bg-base-100 shadow-2xl flex flex-col overflow-hidden border border-base">
+    <div
+      ref={containerRef}
+      className={cn(
+        "cali-chat-widget w-[380px] h-[600px] rounded-2xl bg-theme-base-100 shadow-2xl flex flex-col overflow-hidden border border-theme-base-300",
+        featureUI?.darkMode && "dark"
+      )}
+      style={{
+        fontFamily: theme.typography.fontFamily as string,
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-primary text-primary-content">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-theme-base bg-theme-primary">
         <div className="flex items-center gap-3">
-          <Avatar src={avatarSrc} fallback={botName} size="md" showStatus />
+          <Avatar src={avatarSrc} fallback={botName} size="md" />
           <div>
-            <h3 className="font-semibold text-sm">{botName}</h3>
-            <span className="text-xs opacity-90">Online</span>
+            <h2 className="font-semibold text-theme-primary-content">{botName}</h2>
+            {isTyping && <p className="text-xs text-theme-primary-content opacity-80">typing...</p>}
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="h-8 w-8 rounded-lg hover:bg-white/20 flex items-center justify-center transition-colors"
-        >
-          <X className="h-5 w-5" />
+        <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-colors" aria-label="Close chat">
+          <X className="w-5 h-5 text-theme-primary-content" />
         </button>
       </div>
 
-      {/* Messages */}
-      <ScrollArea.Root className="flex-1 overflow-hidden bg-base-200">
+      {/* Messages Container */}
+      <ScrollArea.Root className="flex-1 overflow-hidden">
         <ScrollArea.Viewport className="w-full h-full">
-          <div className="p-4 space-y-3">
-            {messages.map((message) => (
-              <div key={message.id} className="widget-fade-in">
-                {message.type === 'user' ? (
-                  <UserMessage content={message.content} isPending={message.isPending} />
-                ) : message.type === 'conversational-question' ? (
-                  <ConversationalQuestion
-                    question={message.question || ''}
-                    options={message.options || []}
-                    avatarSrc={avatarSrc}
-                    botName={botName}
-                    onSelectOption={handleOptionSelect}
-                  />
-                ) : message.type === 'action-buttons' ? (
-                  <ActionButtons actions={message.actions || []} avatarSrc={avatarSrc} />
-                ) : message.type === 'agent' ? (
-                  <AgentMessage 
-                    content={message.content}
-                    agentName={message.agentName}
-                  />
-                ) : (
-                  <BotMessage 
-                    content={message.content} 
-                    avatarSrc={avatarSrc}
-                    botName={botName}
-                  />
-                )}
-              </div>
-            ))}
-
-            {isTyping && <TypingIndicator avatarSrc={avatarSrc} botName={botName} />}
+          <div className="flex flex-col gap-4 p-4">
+            {optimisticMessages.map((msg) => {
+              switch (msg.type) {
+                case "user":
+                  return <UserMessage key={msg.id} content={msg.content} isPending={msg.isPending} />
+                case "bot":
+                  return <BotMessage key={msg.id} content={msg.content} avatarSrc={avatarSrc} botName={botName} />
+                case "action-buttons":
+                  return <ActionButtons key={msg.id} actions={msg.actions || []} avatarSrc={avatarSrc} />
+                case "agent":
+                  return <AgentMessage key={msg.id} content={msg.content} agentName={msg.agentName} />
+                case "conversational-question":
+                  return (
+                    <ConversationalQuestion
+                      key={msg.id}
+                      question={msg.question || ""}
+                      options={msg.options || []}
+                      avatarSrc={avatarSrc}
+                      botName={botName}
+                      onSelectOption={handleOptionSelect}
+                    />
+                  )
+                default:
+                  return null
+              }
+            })}
+            {isTyping && featureChat?.showTypingIndicator !== false && <TypingIndicator avatarSrc={avatarSrc} botName={botName} />}
             <div ref={scrollRef} />
           </div>
         </ScrollArea.Viewport>
-
-        <ScrollArea.Scrollbar className="flex touch-none select-none w-2 bg-transparent p-0.5" orientation="vertical">
-          <ScrollArea.Thumb className="relative flex-1 rounded-full bg-neutral/30 hover:bg-neutral/50 transition-colors" />
-        </ScrollArea.Scrollbar>
+        <ScrollArea.Scrollbar orientation="vertical" className="w-2" />
       </ScrollArea.Root>
 
-      {/* Input */}
-      {showInput && (
-        <div className="p-4 border-t border-base bg-base-100">
-          <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-            <div className="flex items-end gap-2">
-              <textarea
-                placeholder={placeholder}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyPress}
-                rows={1}
-                disabled={isPending || chat.isLoading || liveChat.isConnecting}
-                className={cn(
-                  "flex-1 px-4 py-3 rounded-xl border border-base resize-none bg-base-100 text-base-content",
-                  "text-sm placeholder:text-neutral min-h-11 max-h-32",
-                  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all",
-                  "disabled:opacity-50 disabled:cursor-not-allowed"
-                )}
-              />
-              <Button
-                type="submit"
-                disabled={!inputText.trim() || isPending || chat.isLoading || liveChat.isConnecting}
-                variant="primary"
-                isLoading={isPending || chat.isLoading || liveChat.isConnecting}
-                className="h-11 w-11 p-0 flex items-center justify-center"
-              >
-                <Send className="h-5 w-5" />
-              </Button>
-            </div>
-          </form>
+      {/* Input Area - Only show when user input is needed */}
+      {currentStep !== "welcome" && (
+        <div className="border-t border-theme-base bg-theme-base-100 p-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                currentStep === "asking-name"
+                  ? "Enter your name..."
+                  : currentStep === "asking-email"
+                    ? "Enter your email..."
+                    : "Type your message..."
+              }
+              className="flex-1 px-4 py-2 rounded-lg bg-theme-base-200 border border-theme-base focus:outline-none focus:ring-2 focus:ring-theme-primary text-theme-base-content placeholder:text-theme-neutral disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isTyping || isPending}
+            />
+            <Button 
+              onClick={handleSendMessage} 
+              disabled={!inputText.trim() || isTyping || isPending} 
+              className="px-4 py-2"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       )}
     </div>
-  );
-};
+  )
+}

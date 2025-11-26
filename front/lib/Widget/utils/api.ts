@@ -205,16 +205,26 @@ export class WidgetApi {
   }
 
   /**
-   * Get bot theme configuration (only for theming)
+   * Get bot configuration (theme + features)
+   * This is the ONLY initial API call
    */
   async getBotTheme(botId: string, signal?: AbortSignal): Promise<{
     bot: {
+      id: string;
+      name: string;
+      bot_name: string;
+      welcome_message: string;
       theme_colors?: any;
       theme_typography?: any;
       theme_layout?: any;
       theme_branding?: any;
+      feature_chat?: any;
+      feature_ui?: any;
+      feature_faq?: any;
+      feature_forms?: any;
     };
   }> {
+    // Use the correct endpoint that exists in your backend
     return this.fetch(`/api/widget/init/${botId}`, { method: 'GET' }, signal);
   }
 

@@ -1,30 +1,59 @@
 import { CaliChatWidget } from "../lib/Widget/CaliChatWidget";
 import "../lib/Widget/globals.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import type { BotConfiguration, ThemeColors, ThemeTypography, ThemeLayout, ThemeBranding } from "../lib/types";
 
-interface BotConfig {
-  id: string;
-  bot_name: string;
-  welcome_message: string;
-  has_live_chat_agents? : boolean;
-  auto_assign_to_agent?: boolean;
-  agent_transfer_enabled?: boolean;
-  has_ai_assistance?: boolean;
-  fallback_to_agent?: boolean;
-  file_upload_enabled?: boolean;
-  theme_config: {
-    primaryColor?: string;
-    position: 'bottom-right' | 'bottom-left';
-    avatarSrc: string | null;
-    borderRadius?: string | null;
-    fontFamily?: string | null;
-  };
-  feature_config: {
-    has_live_chat_agents?: boolean | null;
-    agent_transfer_enabled?: boolean | null;
-    file_upload_enabled?: boolean | null;
-  };
-}
+// Default theme configuration for fallback
+const DEFAULT_THEME_COLORS: ThemeColors = {
+  primary: '#3B82F6',
+  primaryContent: '#FFFFFF',
+  secondary: '#64748B',
+  secondaryContent: '#FFFFFF',
+  accent: '#F59E0B',
+  accentContent: '#FFFFFF',
+  neutral: '#333333',
+  neutralContent: '#FFFFFF',
+  base100: '#FFFFFF',
+  base200: '#F3F4F6',
+  base300: '#E5E7EB',
+  baseContent: '#1F2937',
+  info: '#3B82F6',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444'
+};
+
+const DEFAULT_THEME_TYPOGRAPHY: ThemeTypography = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSizeBase: '14px',
+  fontSizeSmall: '12px',
+  fontSizeLarge: '16px',
+  fontWeightNormal: 400,
+  fontWeightMedium: 500,
+  fontWeightBold: 600,
+  lineHeight: 1.5
+};
+
+const DEFAULT_THEME_LAYOUT: ThemeLayout = {
+  position: 'bottom-right',
+  width: '380px',
+  height: '600px',
+  borderRadius: '1rem',
+  buttonRadius: '0.5rem',
+  inputRadius: '0.5rem',
+  avatarRadius: '9999px',
+  containerPadding: '1rem',
+  messagePadding: '0.75rem'
+};
+
+const DEFAULT_THEME_BRANDING: ThemeBranding = {
+  logoUrl: null,
+  faviconUrl: null,
+  avatarUrl: null,
+  companyName: null,
+  poweredByText: 'Powered by Calibrage',
+  showPoweredBy: true
+};
 
 interface Conversation {
   id: string;
@@ -41,19 +70,12 @@ interface Conversation {
   };
 }
 
-// Default theme configuration for fallback
-const DEFAULT_THEME_CONFIG = {
-  primaryColor: '#3B82F6',
-  fontFamily: 'Inter, system-ui, sans-serif',
-  borderRadius: '1rem',
-  position: 'bottom-right' as const
-};
-
 function App() {
   const [botId] = useState("bbf342b4-832f-4793-93c3-23d1c91adf95");
-  const [apiBaseUrl] = useState("http://localhost:3002");
+  const [apiBaseUrl] = useState("http://localhost:3001");
   
-  const [config, setConfig] = useState<BotConfig | null>(null);
+  
+  const [config, setConfig] = useState<BotConfiguration | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -73,7 +95,7 @@ function App() {
     }
   }, [activeTab]);
 
-  const loadConfig = async () => {
+  const loadConfig = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch(`${apiBaseUrl}/api/widget/init/${botId}`);
@@ -82,14 +104,16 @@ function App() {
       const data = await response.json();
       
       // Merge backend theme config with defaults
-      const mergedThemeConfig = {
-        ...DEFAULT_THEME_CONFIG,
-        ...(data.bot.theme_config || {})
-      };
-      
-      const botWithDefaults = {
+      const botWithDefaults: BotConfiguration = {
         ...data.bot,
-        theme_config: mergedThemeConfig
+        theme_colors: { ...DEFAULT_THEME_COLORS, ...(data.bot.theme_colors || {}) },
+        theme_typography: { ...DEFAULT_THEME_TYPOGRAPHY, ...(data.bot.theme_typography || {}) },
+        theme_layout: { ...DEFAULT_THEME_LAYOUT, ...(data.bot.theme_layout || {}) },
+        theme_branding: { ...DEFAULT_THEME_BRANDING, ...(data.bot.theme_branding || {}) },
+        feature_chat: data.bot.feature_chat || {},
+        feature_ui: data.bot.feature_ui || {},
+        feature_faq: data.bot.feature_faq || {},
+        feature_forms: data.bot.feature_forms || {}
       };
       
       setConfig(botWithDefaults);
@@ -99,9 +123,9 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [apiBaseUrl, botId]);
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const response = await fetch(`${apiBaseUrl}/api/admin/conversations`);
       const data = await response.json();
@@ -109,7 +133,21 @@ function App() {
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
-  };
+  }, [apiBaseUrl]);
+
+  // Load config from backend
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
+
+  // Poll conversations only when on conversations tab
+  useEffect(() => {
+    if (activeTab === 'conversations') {
+      loadConversations();
+      const interval = setInterval(loadConversations, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, loadConversations]);
 
   const saveConfig = async () => {
     if (!config) return;
@@ -134,14 +172,35 @@ function App() {
     }
   };
 
-  const updateConfig = (updates: Partial<BotConfig>) => {
+  const updateConfig = (updates: Partial<BotConfiguration>) => {
     setConfig(prev => prev ? { ...prev, ...updates } : null);
   };
 
-  const updateThemeConfig = (updates: Partial<BotConfig['theme_config']>) => {
+  const updateThemeColors = (updates: Partial<ThemeColors>) => {
     setConfig(prev => prev ? {
       ...prev,
-      theme_config: { ...prev.theme_config, ...updates }
+      theme_colors: { ...prev.theme_colors!, ...updates }
+    } : null);
+  };
+
+  const updateThemeLayout = (updates: Partial<ThemeLayout>) => {
+    setConfig(prev => prev ? {
+      ...prev,
+      theme_layout: { ...prev.theme_layout!, ...updates }
+    } : null);
+  };
+  
+  const updateThemeTypography = (updates: Partial<ThemeTypography>) => {
+    setConfig(prev => prev ? {
+      ...prev,
+      theme_typography: { ...prev.theme_typography!, ...updates }
+    } : null);
+  };
+
+  const updateThemeBranding = (updates: Partial<ThemeBranding>) => {
+    setConfig(prev => prev ? {
+      ...prev,
+      theme_branding: { ...prev.theme_branding!, ...updates }
     } : null);
   };
 
@@ -234,25 +293,41 @@ function App() {
       {activeTab === 'config' && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
           <div>
-            <ConfigSection title="🎨 Theme">
+            <ConfigSection title="🎨 Theme Colors">
               <ConfigField label="Primary Color">
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                   <input 
                     type="color" 
-                    value={config.theme_config.primaryColor}
-                    onChange={(e) => updateThemeConfig({ primaryColor: e.target.value })}
+                    value={config.theme_colors?.primary}
+                    onChange={(e) => updateThemeColors({ primary: e.target.value })}
                     style={{ width: "60px", height: "40px", cursor: "pointer", border: "1px solid #e2e8f0", borderRadius: "6px" }}
                   />
                   <code style={{ fontSize: "13px", color: "#64748b" }}>
-                    {config.theme_config.primaryColor}
+                    {config.theme_colors?.primary}
                   </code>
                 </div>
               </ConfigField>
 
+              <ConfigField label="Secondary Color">
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <input 
+                    type="color" 
+                    value={config.theme_colors?.secondary}
+                    onChange={(e) => updateThemeColors({ secondary: e.target.value })}
+                    style={{ width: "60px", height: "40px", cursor: "pointer", border: "1px solid #e2e8f0", borderRadius: "6px" }}
+                  />
+                  <code style={{ fontSize: "13px", color: "#64748b" }}>
+                    {config.theme_colors?.secondary}
+                  </code>
+                </div>
+              </ConfigField>
+            </ConfigSection>
+
+            <ConfigSection title="📐 Layout & Typography">
               <ConfigField label="Position">
                 <select 
-                  value={config.theme_config.position}
-                  onChange={(e) => updateThemeConfig({ position: e.target.value as any })}
+                  value={config.theme_layout?.position}
+                  onChange={(e) => updateThemeLayout({ position: e.target.value as any })}
                   style={inputStyle}
                 >
                   <option value="bottom-right">Bottom Right</option>
@@ -260,20 +335,10 @@ function App() {
                 </select>
               </ConfigField>
 
-              <ConfigField label="Avatar URL (optional)">
-                <input 
-                  type="text" 
-                  value={config.theme_config.avatarSrc || ''}
-                  onChange={(e) => updateThemeConfig({ avatarSrc: e.target.value || null })}
-                  style={inputStyle}
-                  placeholder="https://example.com/avatar.png"
-                />
-              </ConfigField>
-
               <ConfigField label="Font Family">
                 <select 
-                  value={config.theme_config.fontFamily || 'Inter, sans-serif'}
-                  onChange={(e) => updateThemeConfig({ fontFamily: e.target.value })}
+                  value={config.theme_typography?.fontFamily || 'Inter, sans-serif'}
+                  onChange={(e) => updateThemeTypography({ fontFamily: e.target.value })}
                   style={inputStyle}
                 >
                   <option value="Inter, sans-serif">Inter (Default)</option>
@@ -285,8 +350,8 @@ function App() {
 
               <ConfigField label="Border Radius">
                 <select 
-                  value={config.theme_config.borderRadius || '1rem'}
-                  onChange={(e) => updateThemeConfig({ borderRadius: e.target.value })}
+                  value={config.theme_layout?.borderRadius || '1rem'}
+                  onChange={(e) => updateThemeLayout({ borderRadius: e.target.value })}
                   style={inputStyle}
                 >
                   <option value="0rem">Square (0px)</option>
@@ -294,6 +359,18 @@ function App() {
                   <option value="1rem">Medium (16px)</option>
                   <option value="1.5rem">Large (24px)</option>
                 </select>
+              </ConfigField>
+            </ConfigSection>
+
+            <ConfigSection title="🖼️ Branding">
+              <ConfigField label="Avatar URL (optional)">
+                  <input 
+                    type="text" 
+                    value={config.theme_branding?.avatarUrl || ''}
+                    onChange={(e) => updateThemeBranding({ avatarUrl: e.target.value || null })}
+                    style={inputStyle}
+                    placeholder="https://example.com/avatar.png"
+                  />
               </ConfigField>
             </ConfigSection>
 
@@ -323,10 +400,10 @@ function App() {
                 <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                   <input 
                     type="checkbox" 
-                    checked={config.has_live_chat_agents || false}
+                    checked={config.feature_chat?.enableLiveChat || false}
                     onChange={(e) => setConfig(prev => prev ? {
                       ...prev,
-                      feature_config: { ...prev.feature_config, has_live_chat_agents: e.target.checked }
+                      feature_chat: { ...prev.feature_chat!, enableLiveChat: e.target.checked }
                     } : null)}
                     style={{ width: "18px", height: "18px" }}
                   />
@@ -338,10 +415,10 @@ function App() {
                 <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                   <input 
                     type="checkbox" 
-                    checked={config.agent_transfer_enabled || false}
+                    checked={config.feature_chat?.agentTransferEnabled || false}
                     onChange={(e) => setConfig(prev => prev ? {
                       ...prev,
-                      feature_config: { ...prev.feature_config, agent_transfer_enabled: e.target.checked }
+                      feature_chat: { ...prev.feature_chat!, agentTransferEnabled: e.target.checked }
                     } : null)}
                     style={{ width: "18px", height: "18px" }}
                   />
@@ -353,10 +430,10 @@ function App() {
                 <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                   <input 
                     type="checkbox" 
-                    checked={config.file_upload_enabled || false}
+                    checked={config.feature_ui?.fileUpload || false}
                     onChange={(e) => setConfig(prev => prev ? {
                       ...prev,
-                      feature_config: { ...prev.feature_config, file_upload_enabled: e.target.checked }
+                      feature_ui: { ...prev.feature_ui!, fileUpload: e.target.checked }
                     } : null)}
                     style={{ width: "18px", height: "18px" }}
                   />
@@ -511,11 +588,12 @@ function App() {
         key={JSON.stringify(config)} // Force re-render on config change
         botId={botId}
         apiBaseUrl={apiBaseUrl}
-        primaryColor={config.theme_config.primaryColor}
+        primaryColor={config.theme_colors?.primary}
         botName={config.bot_name}
         welcomeMessage={config.welcome_message}
-        position={config.theme_config.position}
-        avatarSrc={config.theme_config.avatarSrc || undefined}
+        position={config.theme_layout?.position}
+        avatarSrc={config.theme_branding?.avatarUrl || undefined}
+        initialConfig={config}
       />
     </div>
   );

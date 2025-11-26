@@ -10,10 +10,10 @@ declare interface WidgetConfig {
     botId: string;
     apiBaseUrl: string;
     primaryColor?: string;
-    avatarSrc?: string;
     botName?: string;
-    welcomeMessage?: string;
     position?: 'bottom-right' | 'bottom-left';
+    welcomeMessage?: string;
+    avatarSrc?: string;
     useFavicon?: boolean;
 }
 

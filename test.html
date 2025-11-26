@@ -60,17 +60,80 @@
     src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@latest/dist/cali-chat-widget.umd.js"
     data-widget-url="https://api.example.com/bots/customer-bot-123"
     data-primary-color="#FF6B6B"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CaliChat Widget - Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .example {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        code {
+            background: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        h2 { color: #3B82F6; }
+    </style>
+</head>
+<body>
+    <h1>🤖 CaliChat Widget Examples</h1>
+
+    <div class="example">
+        <h2>Example 1: Full Widget URL</h2>
+        <p>Customer provides: <code>https://api.example.com/bots/customer-bot-123</code></p>
+        <ul>
+            <li>✅ Base URL extracted: <code>https://api.example.com</code></li>
+            <li>✅ Bot ID extracted: <code>customer-bot-123</code></li>
+            <li>✅ Init endpoint: <code>https://api.example.com/api/widget/init/customer-bot-123</code></li>
+            <li>✅ Conversations endpoint: <code>https://api.example.com/api/conversations</code></li>
+        </ul>
+    </div>
+
+    <div class="example">
+        <h2>Example 2: Different URL Pattern</h2>
+        <p>Customer provides: <code>https://chat.company.com/widget/support-bot</code></p>
+        <ul>
+            <li>✅ Base URL extracted: <code>https://chat.company.com</code></li>
+            <li>✅ Bot ID extracted: <code>support-bot</code></li>
+            <li>✅ Init endpoint: <code>https://chat.company.com/api/widget/init/support-bot</code></li>
+        </ul>
+    </div>
+
+    <h2>📋 Installation Code</h2>
+    <pre><code>&lt;script 
+    src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@latest/dist/cali-chat-widget.umd.js"
+    data-widget-url="https://api.example.com/bots/customer-bot-123"
+&gt;&lt;/script&gt;</code></pre>
+
+    <h2>🎨 With Custom Styling</h2>
+    <pre><code>&lt;script 
+    src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@latest/dist/cali-chat-widget.umd.js"
+    data-widget-url="https://api.example.com/bots/customer-bot-123"
+    data-primary-color="#FF6B6B"
     data-bot-name="Support Team"
 &gt;&lt;/script&gt;</code></pre>
 
     <!-- Demo Widget -->
-    <!-- <script src="./dist/cali-chat-widget.umd.js"></script> -->
+    <script src="./dist/cali-chat-widget.umd.js"></script>
     <!-- <script src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@latest/dist/cali-chat-widget.umd.js"></script> -->
     <script>
         // Manual initialization for demo
         CaliChatWidget.init({
-            apiBaseUrl: 'http://localhost:3000/bots/demo-bot-123',
-            primaryColor: '#3B82F6',
+            botId: 'bbf342b4-832f-4793-93c3-23d1c91adf95', // or get from DB
+            apiBaseUrl: 'http://localhost:3001',
+            // primaryColor: '#3B82F6',
             botName: 'Demo Bot'
         });
     </script>

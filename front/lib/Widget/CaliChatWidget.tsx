@@ -1,201 +1,238 @@
-import React, { useEffect, useState, useTransition } from "react";
-import { WidgetConfig, BotConfiguration, ThemeColors, ThemeTypography, ThemeLayout } from "@/types";
-import { cn } from "./utils/cn";
-import { ToggleButton } from "./components/ToggleButton";
-import { ChatInterface } from "./components/ChatInterface";
-import { getFaviconUrl } from "./utils/favicon";
-import { WidgetApi } from "./utils/api";
-import "./globals.css";
+"use client"
 
-// Default theme configuration
-const DEFAULT_THEME_COLORS: Partial<ThemeColors> = {
-  primary: 'oklch(67% 0.182 276.935)'
-};
+import React, { useEffect, useState } from "react"
+import type { BotConfiguration, WidgetConfig } from "@/types"
+import { ChatInterface } from "./components/ChatInterface"
+import { ToggleButton } from "./components/ToggleButton"
+import { extractThemeFromBot, applyThemeToElement } from "./utils/theme-manager"
+import { WidgetApi } from "./utils/api"
+import "./theme-variables.css"
 
-const DEFAULT_THEME_TYPOGRAPHY: Partial<ThemeTypography> = {
-  fontFamily: 'Inter, system-ui, sans-serif'
-};
-
-const DEFAULT_THEME_LAYOUT: Partial<ThemeLayout> = {
-  borderRadius: '1rem',
-  position: 'bottom-right' as const
-};
-
-const DEFAULT_BOT_CONFIG: BotConfiguration = {
-  id: 'fallback',
-  bot_name: 'Support Assistant',
-  welcome_message: 'Hi! How can I help you today?',
-  theme_colors: DEFAULT_THEME_COLORS as any,
-  theme_typography: DEFAULT_THEME_TYPOGRAPHY as any,
-  theme_layout: DEFAULT_THEME_LAYOUT as any,
-  feature_chat: {
-    enableLiveChat: true,
-    enableAI: false,
-    autoAssignAgent: false,
-    agentTransferEnabled: true,
-    showTypingIndicator: true,
-    messageDelay: 800
-  }
-};
-
-function hexToHSL(hex: string): { h: number; s: number; l: number } {
-  hex = hex.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16) / 255;
-  const g = parseInt(hex.substring(2, 4), 16) / 255;
-  const b = parseInt(hex.substring(4, 6), 16) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
-}
-
-function generateColorVariations(baseColor: string) {
-  const { h, s, l } = hexToHSL(baseColor);
-  return {
-    primary: `${h} ${s}% ${l}%`,
-    primaryHover: `${h} ${s}% ${Math.max(l - 5, 0)}%`,
-    primaryContent: l > 50 ? '222 47% 11%' : '0 0% 100%',
-  };
-}
-
-function applyThemeFromBot(bot: any, primaryColorProp?: string) {
-  const themeColors = bot.theme_colors || DEFAULT_THEME_COLORS;
-  const themeTypography = bot.theme_typography || DEFAULT_THEME_TYPOGRAPHY;
-  const themeLayout = bot.theme_layout || DEFAULT_THEME_LAYOUT;
-  
-  if (primaryColorProp && primaryColorProp.startsWith('#')) {
-    const colors = generateColorVariations(primaryColorProp);
-    document.documentElement.style.setProperty('--color-primary', colors.primary);
-    document.documentElement.style.setProperty('--color-primary-hover', colors.primaryHover);
-    document.documentElement.style.setProperty('--color-primary-content', colors.primaryContent);
-  } else if (themeColors.primary) {
-    document.documentElement.style.setProperty('--color-primary', themeColors.primary);
-  }
-
-  if (themeTypography.fontFamily) {
-    document.documentElement.style.setProperty('--font-family', themeTypography.fontFamily);
-  }
-  
-  if (themeLayout.borderRadius) {
-    document.documentElement.style.setProperty('--radius', themeLayout.borderRadius);
-  }
-}
-
-function applyDefaultTheme(primaryColorProp?: string) {
-  if (primaryColorProp && primaryColorProp.startsWith('#')) {
-    const colors = generateColorVariations(primaryColorProp);
-    document.documentElement.style.setProperty('--color-primary', colors.primary);
-    document.documentElement.style.setProperty('--color-primary-hover', colors.primaryHover);
-    document.documentElement.style.setProperty('--color-primary-content', colors.primaryContent);
-  }
-  document.documentElement.style.setProperty('--font-family', DEFAULT_THEME_TYPOGRAPHY.fontFamily!);
-  document.documentElement.style.setProperty('--radius', DEFAULT_THEME_LAYOUT.borderRadius!);
-}
-
-export const CaliChatWidget: React.FC<WidgetConfig> = ({ 
-  botId, 
+export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; initialConfig?: BotConfiguration | null }> = ({
+  botId,
   apiBaseUrl,
-  primaryColor = '#3B82F6',
+  primaryColor,
   avatarSrc,
-  botName,
-  welcomeMessage,
-  position = 'bottom-right',
-  useFavicon = true
+  botName: propBotName,
+  welcomeMessage: propWelcomeMessage,
+  position = "bottom-right",
+  useFavicon = true,
+  onClose,
+  initialConfig,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
-  const [state, setState] = useState<{
-    bot: BotConfiguration | null;
-    detectedFavicon: string | null;
-  }>({
-    bot: null,
-    detectedFavicon: null
-  });
+  const [isOpen, setIsOpen] = useState(false)
+  const [botConfig, setBotConfig] = useState<BotConfiguration | null>(initialConfig || null)
+  const [isLoading, setIsLoading] = useState(!initialConfig)
+  const [error, setError] = useState<string | null>(null)
+  const widgetRef = React.useRef<HTMLDivElement>(null)
+
+  // Update internal state if initialConfig changes (for preview)
+  useEffect(() => {
+    if (initialConfig) {
+      setBotConfig(initialConfig)
+      setIsLoading(false)
+      
+      // Apply theme immediately
+      if (widgetRef.current) {
+        const theme = extractThemeFromBot(initialConfig)
+        applyThemeToElement(widgetRef.current, theme)
+      }
+    }
+  }, [initialConfig])
 
   useEffect(() => {
-    const initWidget = async () => {
-      const api = new WidgetApi(apiBaseUrl);
+    // Skip fetch if we have initialConfig and it matches the botId (simple check)
+    if (initialConfig && initialConfig.id === botId) return
 
+    const fetchBotConfig = async () => {
       try {
-        // Detect favicon if needed
-        if (useFavicon && !avatarSrc) {
-          const favicon = getFaviconUrl();
-          setState(prev => ({ ...prev, detectedFavicon: favicon }));
+        setIsLoading(true)
+        const api = new WidgetApi(apiBaseUrl)
+        
+        const data = await api.getBotTheme(botId)
+        const config = data.bot as BotConfiguration
+
+        setBotConfig(config)
+
+        // Apply theme to widget container
+        if (widgetRef.current) {
+          const theme = extractThemeFromBot(config)
+          applyThemeToElement(widgetRef.current, theme)
         }
 
-        // Load theme configuration only
-        try {
-          const themeData = await api.getBotTheme(botId);
-          
-          setState(prev => ({ 
-            ...prev, 
-            bot: {
-              id: botId,
-              bot_name: botName || 'Support',
-              welcome_message: welcomeMessage || 'How can we help?',
-              ...themeData.bot
-            } as any
-          }));
-          
-          applyThemeFromBot(themeData.bot, primaryColor);
-        } catch {
-          console.log('Could not load theme, using defaults');
-          setState(prev => ({ ...prev, bot: DEFAULT_BOT_CONFIG }));
-          applyDefaultTheme(primaryColor);
-        }
+        setError(null)
+        console.log('✅ Widget configuration loaded')
+      } catch (err) {
+        console.error("Failed to load widget configuration:", err)
+        setError(err instanceof Error ? err.message : "Failed to load configuration")
+        
+        // Set default config so widget still works
+        setBotConfig({
+          id: botId,
+          bot_name: propBotName || "Support",
+          welcome_message: propWelcomeMessage || "How can we help?",
+          theme_colors: {
+  /* Primary brand color — Blue 500 */
+  primary: "#3B82F6",          
+  primaryContent: "#FFFFFF",     // White
 
-      } catch (error) {
-        console.error('Widget initialization error:', error);
-        setState(prev => ({ ...prev, bot: DEFAULT_BOT_CONFIG }));
-        applyDefaultTheme(primaryColor);
+  /* Secondary brand color — Slate 600 */
+  secondary: "#64748B",
+  secondaryContent: "#FFFFFF",   // White
+
+  /* Accent / highlight color — Amber 500 */
+  accent: "#F59E0B",
+  accentContent: "#FFFFFF",      // White
+
+  /* Neutral elements — Dark Gray 800 */
+  neutral: "#333333",
+  neutralContent: "#FFFFFF",     // White
+
+  /* Base backgrounds & surfaces */
+  base100: "#FFFFFF",  // White
+  base200: "#F3F4F6",  // Gray 100
+  base300: "#E5E7EB",  // Gray 200
+  baseContent: "#1F2937", // Gray 800
+
+  /* Semantic colors */
+  info: "#3B82F6",    // Blue 500
+  success: "#10B981", // Emerald 500
+  warning: "#F59E0B", // Amber 500
+  error: "#EF4444",   // Red 500
+
+  // // /* Optional: Hover / focus variants */
+  // // primaryFocus: "#2563EB",   // Blue 600
+  // // secondaryFocus: "#475569", // Slate 700
+  // // accentFocus: "#D97706",    // Amber 600
+
+  // /* Text emphasis colors */
+  // contentStrong: "#111827", // Gray 900
+  // contentSoft: "#6B7280",   // Gray 500
+
+  // /* Borders & rings */
+  // borderColor: "#D1D5DB", // Gray 300
+  // ringColor: "#93C5FD",   // Blue 300
+},
+
+          theme_typography: {
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSizeBase: "14px",
+            fontSizeSmall: "12px",
+            fontSizeLarge: "16px",
+            fontWeightNormal: 400,
+            fontWeightMedium: 500,
+            fontWeightBold: 600,
+            lineHeight: 1.5
+          },
+          theme_layout: {
+            position: "bottom-right",
+            width: "380px",
+            height: "600px",
+            borderRadius: "1rem",
+            buttonRadius: "0.5rem",
+            inputRadius: "0.5rem",
+            avatarRadius: "9999px",
+            containerPadding: "1rem",
+            messagePadding: "0.75rem"
+          },
+          theme_branding: {
+            logoUrl: null,
+            avatarUrl: avatarSrc || null,
+            faviconUrl: null,
+            companyName: null,
+            poweredByText: "Powered by Calibrage",
+            showPoweredBy: true,
+          },
+          feature_chat: {
+            enableAI: false,
+            messageDelay: 800,
+            enableLiveChat: true,
+            autoAssignAgent: true,
+            showTypingIndicator: true,
+            agentTransferEnabled: true,
+          },
+          feature_ui: {
+            darkMode: false,
+            animations: true,
+            fileUpload: false,
+            emojiPicker: true,
+            maxFileSize: 5242880,
+            soundEnabled: true,
+          },
+          feature_faq: {
+            maxVisible: 5,
+            showSearch: true,
+            showFaqList: true,
+            categorizeByTags: false,
+          },
+          feature_forms: {
+            gdprConsent: false,
+            requireName: true,
+            requireEmail: true,
+            requirePhone: false,
+            privacyPolicyUrl: null,
+          },
+        })
+      } finally {
+        setIsLoading(false)
       }
-    };
+    }
 
-    initWidget();
-  }, [botId, apiBaseUrl, primaryColor, avatarSrc, botName, welcomeMessage, useFavicon]);
+    if (!initialConfig) {
+      fetchBotConfig()
+    }
+  }, [botId, apiBaseUrl, propBotName, propWelcomeMessage, avatarSrc, initialConfig])
 
-  const toggleWidget = () => {
-    startTransition(() => {
-      setIsOpen((prev) => !prev);
-    });
-  };
+  const handleClose = () => {
+    setIsOpen(false)
+    onClose?.()
+  }
 
-  const positionClass = position === 'bottom-left' ? 'left-4' : 'right-4';
-  const finalAvatarSrc = avatarSrc || state.bot?.theme_branding?.avatarUrl || state.detectedFavicon;
+  const handleOpen = () => {
+    setIsOpen(true)
+  }
+
+  if (isLoading) {
+    return (
+      <div
+        ref={widgetRef}
+        className={`cali-chat-widget fixed bottom-4 z-50 ${position === "bottom-left" ? "left-4" : "right-4"}`}
+      >
+        <div className="w-14 h-14 rounded-full bg-theme-primary flex items-center justify-center animate-pulse">
+          <div className="w-6 h-6 border-2 border-theme-primary-content border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
+  const finalBotName = propBotName || botConfig?.bot_name || "Support"
+  const finalWelcomeMessage = propWelcomeMessage || botConfig?.welcome_message || "How can we help?"
+  const finalAvatarSrc = avatarSrc || botConfig?.theme_branding?.avatarUrl || undefined
 
   return (
-    <div className={cn("cali-chat-widget fixed bottom-4 z-50", positionClass)}>
-      {/* Chat Interface - Hidden when closed */}
-      {isOpen && (
+    <div
+      ref={widgetRef}
+      className={`cali-chat-widget fixed bottom-4 z-50 ${position === "bottom-left" ? "left-4" : "right-4"}`}
+    >
+      {isOpen && botConfig && (
         <div className="widget-animate-in mb-4">
           <ChatInterface
-            botName={botName || state.bot?.bot_name || 'Support'}
-            welcomeMessage={welcomeMessage || state.bot?.welcome_message}
-            avatarSrc={finalAvatarSrc || undefined}
+            botName={finalBotName}
+            welcomeMessage={finalWelcomeMessage}
+            avatarSrc={finalAvatarSrc}
             apiBaseUrl={apiBaseUrl}
             botId={botId}
-            onClose={toggleWidget}
+            onClose={handleClose}
+            botConfig={botConfig}
+            featureChat={botConfig.feature_chat}
+            featureUI={botConfig.feature_ui}
           />
         </div>
       )}
 
-      {/* Toggle button - Always visible */}
       {!isOpen && (
-        <ToggleButton 
-          onClick={toggleWidget} 
-          primaryColor={primaryColor}
-          isLoading={isPending}
-        />
+        <ToggleButton onClick={handleOpen} primaryColor={primaryColor} avatarSrc={finalAvatarSrc} />
       )}
     </div>
-  );
-};
+  )
+}
