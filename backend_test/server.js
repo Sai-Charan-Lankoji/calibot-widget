@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { query } from './db.js';
+import ngrokService from './ngrokService.js';
 
 const app = express();
 app.use(cors());
@@ -11,14 +12,19 @@ app.use((req, res, next) => {
     next();
 });
 
-// Get widget configuration
+// Get widget configuration (OPTIMIZED - No FAQs)
 app.get('/api/widget/init/:botId', async (req, res) => {
     try {
         const { botId } = req.params;
+        
+        console.log(`🔧 Initializing widget for bot: ${botId}`);
+        
         const { rows: botRows } = await query(
             `SELECT 
-                b.id, 
-                b.name as bot_name, 
+                b.id,
+                b.name,
+                bc.id as config_id,
+                bc.bot_name,
                 bc.welcome_message,
                 bc.theme_colors,
                 bc.theme_typography,
@@ -27,19 +33,25 @@ app.get('/api/widget/init/:botId', async (req, res) => {
                 bc.feature_chat,
                 bc.feature_ui,
                 bc.feature_faq,
-                bc.feature_forms
+                bc.feature_forms,
+                bc.is_active
              FROM bots b 
              LEFT JOIN bot_configurations bc ON b.config_id = bc.id 
-             WHERE b.id = $1`,
+             WHERE b.id = $1 AND bc.is_active = true`,
             [botId]
         );
 
         let bot = botRows[0];
+
+        // Fallback to first active bot if specified bot not found
         if (!bot) {
+            console.log(`⚠️ Bot ${botId} not found, using default...`);
             const { rows: defaultBotRows } = await query(
                 `SELECT 
-                    b.id, 
-                    b.name as bot_name, 
+                    b.id,
+                    b.name,
+                    bc.id as config_id,
+                    bc.bot_name,
                     bc.welcome_message,
                     bc.theme_colors,
                     bc.theme_typography,
@@ -48,19 +60,43 @@ app.get('/api/widget/init/:botId', async (req, res) => {
                     bc.feature_chat,
                     bc.feature_ui,
                     bc.feature_faq,
-                    bc.feature_forms
+                    bc.feature_forms,
+                    bc.is_active
                  FROM bots b 
                  LEFT JOIN bot_configurations bc ON b.config_id = bc.id 
+                 WHERE bc.is_active = true
                  LIMIT 1`
             );
             bot = defaultBotRows[0];
         }
 
-        if (!bot) return res.status(404).json({ error: 'Bot not found' });
+        if (!bot) {
+            return res.status(404).json({ 
+                error: 'No active bot configuration found' 
+            });
+        }
 
-        const { rows: faqs } = await query('SELECT * FROM faq WHERE bot_id = $1', [bot.id]);
-        console.log(`   ✅ Bot config loaded: ${bot.bot_name}`);
-        res.json({ bot, faqs });
+        // Parse JSONB fields (they come as objects from PostgreSQL)
+        const response = {
+            bot: {
+                id: bot.id,
+                name: bot.name,
+                bot_name: bot.bot_name || bot.name,
+                welcome_message: bot.welcome_message || 'Hi! How can I help you?',
+                theme_colors: bot.theme_colors || {},
+                theme_typography: bot.theme_typography || {},
+                theme_layout: bot.theme_layout || {},
+                theme_branding: bot.theme_branding || {},
+                feature_chat: bot.feature_chat || {},
+                feature_ui: bot.feature_ui || {},
+                feature_faq: bot.feature_faq || {},
+                feature_forms: bot.feature_forms || {}
+            }
+        };
+
+        console.log(`   ✅ Bot config loaded: ${response.bot.bot_name}`);
+        res.json(response);
+        
     } catch (error) {
         console.error('   ❌ Error loading config:', error);
         res.status(500).json({ error: 'Failed to load configuration' });
@@ -394,6 +430,7 @@ app.post('/api/chat/:botId/start', async (req, res) => {
 
 // POST /api/chat/:botId/message - Handle user response in conversation
 // POST /api/chat/:botId/message - Handle user response in conversation
+// POST /api/chat/:botId/message - Handle user response in conversation
 app.post('/api/chat/:botId/message', async (req, res) => {
     try {
         const { botId } = req.params;
@@ -401,8 +438,8 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
         const userInput = selected_option || user_answer;
 
-        if (!userInput || current_rank === undefined) {
-            return res.status(400).json({ error: 'Missing answer or rank' });
+        if (current_rank === undefined) {
+            return res.status(400).json({ error: 'Missing rank' });
         }
 
         console.log(`\n💬 Processing message - Rank: ${current_rank}, Input: "${userInput}"`);
@@ -418,31 +455,36 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             [botId]
         );
 
+        if (faqs.length === 0) {
+            return res.json({
+                end: true,
+                message: 'No questions available at this time.'
+            });
+        }
+
         const tree = buildQuestionTree(faqs);
 
         // Build flat map
         const flatMap = {};
-        tree.forEach(node => {
-            const traverse = (n) => {
-                flatMap[n.rank] = n;
-                n.children.forEach(traverse);
-            };
-            traverse(node);
-        });
+        const traverse = (n) => {
+            flatMap[n.rank] = n;
+            n.children.forEach(traverse);
+        };
+        tree.forEach(traverse);
 
         const currentQuestion = flatMap[current_rank];
 
         if (!currentQuestion) {
+            console.log(`❌ No question found for rank ${current_rank}`);
             return res.json({
                 end: true,
-                message: 'Thank you! Would you like to speak with a specialist?',
-                transfer_to_human: true
+                message: 'End of conversation flow.',
             });
         }
 
         let nextQuestion = null;
 
-        // BRANCHING: Validate option
+        // BRANCHING: Handle option-based questions
         if (currentQuestion.options && currentQuestion.options.length > 0) {
             const validOption = currentQuestion.options.find(opt =>
                 opt.toLowerCase() === selected_option?.toLowerCase() ||
@@ -453,7 +495,7 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             if (!validOption) {
                 console.log(`❌ Invalid option: "${selected_option}"`);
                 return res.json({
-                    error: 'Please choose one of the options below:',
+                    error: 'Invalid option selected',
                     repeat_question: {
                         id: currentQuestion.id,
                         rank: currentQuestion.rank,
@@ -465,28 +507,55 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
             console.log(`✅ Valid option selected: "${validOption}"`);
 
-            // Find next question based on selected option
+            // Robust matching: Try multiple strategies to find the next question
             nextQuestion = currentQuestion.children.find(child => {
-                const parentRank = child.parent_rank;
-                if (!parentRank) return false;
-                
-                // Match exact format: "rank:option"
-                return parentRank === `${current_rank}:${validOption}` ||
-                       parentRank.toLowerCase().endsWith(`:${validOption.toLowerCase()}`);
+                const rawParent = child.parent_rank;
+                if (!rawParent) return false;
+
+                // Strategy 1: Exact match with "rank:option" format
+                if (rawParent === `${current_rank}:${validOption}`) return true;
+
+                // Strategy 2: Case-insensitive match
+                if (rawParent.toLowerCase() === `${current_rank}:${validOption}`.toLowerCase()) return true;
+
+                // Strategy 3: Parse and match parts
+                const parts = String(rawParent).split(':');
+                const parentPart = parts[0]?.trim();
+                const optionPart = parts.slice(1).join(':').trim();
+
+                if (parentPart && String(parentPart) === String(current_rank)) {
+                    if (!optionPart) return true; // Match rank only
+                    
+                    const lhs = optionPart.toLowerCase();
+                    const rhs = validOption.toLowerCase();
+                    
+                    // Exact match
+                    if (lhs === rhs) return true;
+                    
+                    // Partial match (contains)
+                    if (lhs.includes(rhs) || rhs.includes(lhs)) return true;
+                }
+
+                // Strategy 4: Fuzzy match on raw parent_rank
+                if (rawParent.toLowerCase().includes(validOption.toLowerCase())) return true;
+
+                return false;
             });
 
-            console.log(`🔍 Looking for child with parent_rank: ${current_rank}:${validOption}`);
+            console.log(`🔍 Looking for child with parent_rank matching: ${current_rank}:${validOption}`);
             console.log(`   Available children:`, currentQuestion.children.map(c => ({
                 rank: c.rank,
                 parent_rank: c.parent_rank
             })));
 
-            // ❌ REMOVED: Fallback to first child
-            // if (!nextQuestion && currentQuestion.children.length > 0) {
-            //     nextQuestion = currentQuestion.children[0];
-            // }
+            // Fallback to first child if no exact match found
+            if (!nextQuestion && currentQuestion.children.length > 0) {
+                console.log(`⚠️  No exact child match for option="${validOption}" on rank=${current_rank}`);
+                console.log(`    Falling back to first child: rank=${currentQuestion.children[0].rank}`);
+                nextQuestion = currentQuestion.children[0];
+            }
 
-            // NEW: If no specific follow-up, end conversation
+            // If still no next question, end the conversation
             if (!nextQuestion) {
                 console.log(`🏁 No follow-up question for option: "${validOption}"`);
                 return res.json({
@@ -498,10 +567,39 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             }
 
         } else {
-            // LINEAR: just next question
+            // LINEAR / TEXT INPUT: Move to next rank or end
+            
+            // Detect email input (terminal state)
+            const emailLike = typeof user_answer === 'string' && /\S+@\S+\.\S+/.test(user_answer.trim());
+            if (emailLike) {
+                console.log(`📧 Detected email input for rank ${current_rank}: ${user_answer.trim()}. Ending flow.`);
+                return res.json({ 
+                    acknowledged: 'Thank you!',
+                    end: true, 
+                    message: "Thank you! This completes the conversation." 
+                });
+            }
+
             const nextRank = currentQuestion.rank + 1;
             nextQuestion = Object.values(flatMap).find(q => q.rank === nextRank);
             console.log(`→ Linear flow: moving to rank ${nextRank}`);
+
+            // Log available ranks for debugging
+            if (!nextQuestion) {
+                console.log(`ℹ️  Question rank ${current_rank} has no options (text input). No next question found (rank ${nextRank}).`);
+                console.log(`    Available question ranks: ${Object.keys(flatMap).join(', ')}`);
+            } else {
+                // Prevent repeating email questions
+                const nextIsEmailQuestion = /email|e-mail|best email/i.test(nextQuestion.question || '');
+                if (nextIsEmailQuestion) {
+                    console.log(`ℹ️  Next question (rank ${nextQuestion.rank}) appears to be an email capture. Finishing instead of repeating.`);
+                    return res.json({ 
+                        acknowledged: 'Thank you!',
+                        end: true, 
+                        message: "Thank you! This completes the conversation." 
+                    });
+                }
+            }
 
             // If no next question in linear flow, end conversation
             if (!nextQuestion) {
@@ -515,6 +613,7 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             }
         }
 
+        // Return next question
         if (nextQuestion) {
             console.log(`→ Next question: Rank ${nextQuestion.rank}`);
             return res.json({
@@ -523,7 +622,8 @@ app.post('/api/chat/:botId/message', async (req, res) => {
                     id: nextQuestion.id,
                     rank: nextQuestion.rank,
                     question: nextQuestion.question,
-                    options: nextQuestion.options.length > 0 ? nextQuestion.options : null
+                    options: nextQuestion.options.length > 0 ? nextQuestion.options : null,
+                    is_multi_select: nextQuestion.options.length > 0
                 }
             });
         }
@@ -531,6 +631,7 @@ app.post('/api/chat/:botId/message', async (req, res) => {
         // Fallback end of conversation
         console.log(`🏁 End of conversation (fallback)`);
         return res.json({
+            acknowledged: 'Thank you!',
             end: true,
             message: 'Thank you! Would you like to connect with a specialist?',
             transfer_to_human: true
@@ -538,12 +639,13 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
     } catch (error) {
         console.error('❌ Error handling message:', error);
-        res.status(500).json({ error: 'Something went wrong' });
+        res.status(500).json({ error: 'Failed to process message' });
     }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`🚀 API server running on http://localhost:${PORT}`);
     console.log(`📡 Connected to PostgreSQL`);
+    await ngrokService.start(PORT);
 });
