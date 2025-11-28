@@ -13,6 +13,8 @@ export default tseslint.config([
      
       // 'indent': 'off',
       // 'quotes': 'off',
+      "no-unused-vars": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
       '@typescript-eslint/no-explicit-any': 'warn', // Example: disable 'any' usage warnings
       // 'react-refresh/only-export-components': 'off', // Example: disable a common React-refresh rule
       // ... add more rules set to 'off'

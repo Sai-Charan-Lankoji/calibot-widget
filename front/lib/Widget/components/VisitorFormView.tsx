@@ -1,104 +1,198 @@
-import React, { useState, useCallback } from "react";
-import { ArrowLeft, Mail, User } from "lucide-react";
-import { VisitorInfo } from "@/types";
-import { ErrorView } from "./ErrorView";
+import React, { useState } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
+import { User, Mail, MessageSquare } from "lucide-react";
 
-interface VisitorFormViewProps {
-  botName: string;
-  onSubmit: (info: VisitorInfo) => void;
-  onBack: () => void;
-  isLoading: boolean;
-  error?: string | null;
-  onDismissError?: () => void;
+interface VisitorFormData {
+  name: string;
+  email: string;
+  message?: string;
 }
 
-export const VisitorFormView = React.memo<VisitorFormViewProps>(
-  ({
-    botName,
-    onSubmit,
-    onBack,
-    isLoading,
-    error,
-    onDismissError
-  }) => {
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
+interface VisitorFormViewProps {
+  onSubmit: (data: VisitorFormData) => void;
+  onSkip?: () => void;
+  isLoading?: boolean;
+  requireMessage?: boolean;
+}
 
-    const handleSubmit = useCallback((e: React.FormEvent) => {
-      e.preventDefault();
-      onSubmit({ name, email });
-    }, [name, email, onSubmit]);
+export const VisitorFormView: React.FC<VisitorFormViewProps> = ({
+  onSubmit,
+  onSkip,
+  isLoading = false,
+  requireMessage = false,
+}) => {
+  const [formData, setFormData] = useState<VisitorFormData>({
+    name: "",
+    email: "",
+    message: "",
+  });
 
-    return (
-      <div className="w-[380px] rounded-2xl bg-base-100 shadow-2xl border border-base overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-3 p-4 border-b border-base bg-base-200">
-          <button
-            onClick={onBack}
-            disabled={isLoading}
-            className="flex items-center justify-center h-9 w-9 rounded-lg hover:bg-base-300 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ArrowLeft className="h-4 w-4 text-base-content" />
-          </button>
-          <span className="text-sm font-medium text-base-content">Back to FAQs</span>
+  const [errors, setErrors] = useState<Partial<VisitorFormData>>({});
+
+  const validateEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const newErrors: Partial<VisitorFormData> = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = "Name is required";
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!validateEmail(formData.email)) {
+      newErrors.email = "Please enter a valid email";
+    }
+
+    if (requireMessage && !formData.message?.trim()) {
+      newErrors.message = "Message is required";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    onSubmit(formData);
+  };
+
+  const handleChange = (field: keyof VisitorFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  return (
+    <div className="p-4 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+      {/* Header */}
+      <div className="text-center">
+        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+          <User className="w-6 h-6 text-primary" />
         </div>
-
-        {error && onDismissError && (
-          <div className="px-6 pt-6">
-            <ErrorView message={error} onDismiss={onDismissError} />
-          </div>
-        )}
-
-        <div className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <h3 className="font-bold text-xl text-base-content">Start a conversation</h3>
-              <p className="text-sm text-neutral leading-relaxed">
-                Chat with {botName}. We typically respond within a few minutes.
-              </p>
-            </div>
-
-            <Input
-              label="Your Name"
-              icon={<User className="h-4 w-4" />}
-              type="text"
-              placeholder="John Doe"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-
-            <Input
-              label="Email Address"
-              icon={<Mail className="h-4 w-4" />}
-              type="email"
-              placeholder="john@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-
-            <Button
-              type="submit"
-              variant="primary"
-              isLoading={isLoading}
-              className="w-full"
-            >
-              Start Chat
-            </Button>
-
-            <p className="text-xs text-center text-neutral">
-              By continuing, you agree to our terms of service
-            </p>
-          </form>
-        </div>
+        <h3 className="text-lg font-semibold text-card-foreground mb-1">
+          Let's get started
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Please share your details so we can help you better
+        </p>
       </div>
-    );
-  }
-);
 
-VisitorFormView.displayName = 'VisitorFormView';
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Name Input */}
+        <div>
+          <label
+            htmlFor="name"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
+            Name
+          </label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              id="name"
+              type="text"
+              value={formData.name}
+              onChange={(e) => handleChange("name", e.target.value)}
+              placeholder="John Doe"
+              disabled={isLoading}
+              error={errors.name}
+              className="pl-10"
+            />
+          </div>
+        </div>
+
+        {/* Email Input */}
+        <div>
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
+            Email
+          </label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => handleChange("email", e.target.value)}
+              placeholder="john@example.com"
+              disabled={isLoading}
+              error={errors.email}
+              className="pl-10"
+            />
+          </div>
+        </div>
+
+        {/* Message Input (Optional or Required) */}
+        <div>
+          <label
+            htmlFor="message"
+            className="block text-sm font-medium text-foreground mb-1"
+          >
+            Message{" "}
+            {!requireMessage && (
+              <span className="text-muted-foreground">(Optional)</span>
+            )}
+          </label>
+          <div className="relative">
+            <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+            <textarea
+              id="message"
+              value={formData.message}
+              onChange={(e) => handleChange("message", e.target.value)}
+              placeholder="How can we help you?"
+              disabled={isLoading}
+              rows={3}
+              className={`
+                input pl-10 resize-none
+                ${errors.message ? "border-destructive" : ""}
+              `}
+            />
+          </div>
+          {errors.message && (
+            <p className="text-xs text-destructive mt-1 px-1">
+              {errors.message}
+            </p>
+          )}
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-2 pt-2">
+          {onSkip && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onSkip}
+              disabled={isLoading}
+              className="flex-1"
+            >
+              Skip
+            </Button>
+          )}
+          <Button
+            type="submit"
+            variant="primary"
+            isLoading={isLoading}
+            className="flex-1"
+          >
+            Continue
+          </Button>
+        </div>
+      </form>
+
+      {/* Privacy Note */}
+      <p className="text-xs text-muted-foreground text-center">
+        We respect your privacy. Your information is secure.
+      </p>
+    </div>
+  );
+};

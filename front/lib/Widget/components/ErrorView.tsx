@@ -1,27 +1,54 @@
 import React from "react";
-import { AlertCircle, X } from "lucide-react";
-import { cn } from "../utils/cn";
+import { Button } from "./ui/Button";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface ErrorViewProps {
+  title?: string;
   message: string;
-  onDismiss: () => void;
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
-export const ErrorView: React.FC<ErrorViewProps> = ({ message, onDismiss }) => {
+export const ErrorView: React.FC<ErrorViewProps> = ({
+  title = "Oops! Something went wrong",
+  message,
+  onRetry,
+  isRetrying = false,
+}) => {
   return (
-    <div className={cn(
-      "flex items-start gap-3 p-3 rounded-lg border border-red-200 bg-red-50",
-      "text-sm text-red-800 widget-fade-in"
-    )}>
-      <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-      <p className="flex-1">{message}</p>
-      <button
-        onClick={onDismiss}
-        className="shrink-0 text-red-600 hover:text-red-800 transition-colors"
-        aria-label="Dismiss error"
-      >
-        <X className="h-4 w-4" />
-      </button>
+    <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
+      {/* Error Icon */}
+      <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+        <AlertCircle className="w-8 h-8 text-destructive" />
+      </div>
+
+      {/* Title */}
+      <h3 className="text-lg font-semibold text-card-foreground">
+        {title}
+      </h3>
+
+      {/* Message */}
+      <p className="text-sm text-muted-foreground max-w-sm">
+        {message}
+      </p>
+
+      {/* Retry Button */}
+      {onRetry && (
+        <Button
+          onClick={onRetry}
+          variant="primary"
+          isLoading={isRetrying}
+          className="gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </Button>
+      )}
+
+      {/* Help Text */}
+      <p className="text-xs text-muted-foreground">
+        If the problem persists, please contact support
+      </p>
     </div>
   );
 };

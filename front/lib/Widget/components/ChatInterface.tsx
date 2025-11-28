@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect, useRef, useCallback, useOptimistic, useTransition } from "react"
 import { X, Send } from "lucide-react"
-import type { Conversation, VisitorInfo, BotConfiguration } from "@/types"
+import type { Conversation, VisitorInfo, BotConfiguration, Message } from "@/types"
 import { cn } from "../utils/cn"
 import * as ScrollArea from "@radix-ui/react-scroll-area"
 import { Avatar } from "./ui/Avatar"
 import { Button } from "./ui/Button"
 import { ConversationalQuestion } from "./ConversationalQuestion"
 import { type ThemeConfig, applyThemeToElement, extractThemeFromBot, DEFAULT_THEME } from "../utils/theme-manager"
-// import "../theme-variables.css"
 import "../globals.css"
 
 type BubbleMessage = {
@@ -35,15 +34,15 @@ interface ChatInterfaceProps {
   botId: string
   onClose: () => void
   botConfig?: BotConfiguration
-  featureChat?: any
-  featureUI?: any
+  featureUI?: Record<string, any>
+  serverDown?: boolean
 }
 
 const UserMessage = React.memo<{ content: string; isPending?: boolean }>(({ content, isPending }) => (
   <div className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
     <div
       className={cn(
-        "max-w-[80%] bg-theme-primary text-theme-primary-content px-4 py-3 rounded-2xl rounded-br-md shadow-lg",
+        "max-w-[80%] bg-primary text-primary-foreground px-4 py-3 rounded-2xl rounded-br-md shadow-lg",
         isPending && "opacity-60 animate-pulse",
       )}
     >
@@ -56,59 +55,45 @@ UserMessage.displayName = "UserMessage"
 const BotMessage = React.memo<{ content: string; avatarSrc?: string; botName: string }>(
   ({ content, avatarSrc, botName }) => (
     <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <Avatar src={avatarSrc} fallback={botName} size="sm" className="flex-shrink-0 mt-1" />
-      <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-base">
-        <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">{content}</p>
+      <Avatar src={avatarSrc} fallback={botName} size="sm" className="flex-shrink-0" />
+      <div className="bg-card px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-border max-w-[80%]">
+        <p className="text-sm leading-relaxed text-card-foreground">{content}</p>
       </div>
     </div>
   ),
 )
 BotMessage.displayName = "BotMessage"
 
-const AgentMessage = React.memo<{ content: string; agentName?: string }>(({ content, agentName }) => (
-  <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-    <div className="w-8 h-8 rounded-full bg-theme-accent text-theme-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-theme-base-100 shadow-md">
-      {agentName?.charAt(0) || "A"}
+const ActionButtons = React.memo<{ actions: Array<{ label: string; onClick: () => void }>; avatarSrc?: string }>(
+  ({ actions, avatarSrc }) => (
+    <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {avatarSrc && <div className="w-7 shrink-0" />}
+      <div className="flex flex-wrap gap-2">
+        {actions.map((action, idx) => (
+          <Button
+            key={idx}
+            variant="outline"
+            size="sm"
+            onClick={action.onClick}
+            className="rounded-full px-4 py-2 transition-all duration-200 hover:opacity-80 bg-muted border border-border text-foreground"
+          >
+            {action.label}
+          </Button>
+        ))}
+      </div>
     </div>
-    <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-accent">
-      <p className="text-xs font-semibold text-theme-accent mb-1">{agentName || "Support Agent"}</p>
-      <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">{content}</p>
-    </div>
-  </div>
-))
-AgentMessage.displayName = "AgentMessage"
-
-const ActionButtons = React.memo<{
-  actions: Array<{ label: string; onClick: () => void }>
-  avatarSrc?: string
-}>(({ actions, avatarSrc }) => (
-  <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-    {avatarSrc && <div className="w-8 flex-shrink-0" />}
-    <div className="flex flex-wrap gap-2.5">
-      {actions.map((action, idx) => (
-        <Button
-          key={idx}
-          variant="outline"
-          size="sm"
-          onClick={action.onClick}
-          className="rounded-full px-4 py-2 transition-all duration-200 hover:opacity-80 bg-theme-base-200 border border-theme-base text-theme-base-content"
-        >
-          {action.label}
-        </Button>
-      ))}
-    </div>
-  </div>
-))
+  ),
+)
 ActionButtons.displayName = "ActionButtons"
 
 const TypingIndicator = React.memo<{ avatarSrc?: string; botName: string }>(({ avatarSrc, botName }) => (
   <div className="flex items-start gap-3 widget-fade-in animate-in fade-in slide-in-from-bottom-2 duration-300">
     <Avatar src={avatarSrc} fallback={botName} size="sm" className="flex-shrink-0" />
-    <div className="bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-base">
+    <div className="bg-card px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-border">
       <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce [animation-delay:-0.3s]" />
-        <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce [animation-delay:-0.15s]" />
-        <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce" />
+        <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.3s]" />
+        <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:-0.15s]" />
+        <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
       </div>
     </div>
   </div>
@@ -123,8 +108,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   botId,
   onClose,
   botConfig,
-  featureChat,
-  featureUI,
+  featureUI = {},
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<BubbleMessage[]>([])
@@ -144,7 +128,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const timersRef = useRef<Set<number>>(new Set())
   const abortControllerRef = useRef<AbortController | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME)
+  const [theme, setTheme] = useState<Partial<ThemeConfig>>(DEFAULT_THEME)
 
   const genId = useCallback(() => crypto.randomUUID(), [])
 
@@ -153,9 +137,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [])
 
   useEffect(() => {
+    const timers = timersRef.current
     return () => {
-      timersRef.current.forEach((timer) => clearTimeout(timer))
-      timersRef.current.clear()
+      timers.forEach((timer) => clearTimeout(timer))
+      timers.clear()
       abortControllerRef.current?.abort()
     }
   }, [])
@@ -256,7 +241,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             addBotMessage(data.message || "Thank you for your responses!", "bot")
           }, 300)
 
-          // Show transfer to human option if flagged
           if (data.transfer_to_human) {
             setManagedTimeout(() => {
               addBotMessage("", "action-buttons", {
@@ -319,10 +303,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           })
         }, 400)
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Restart chat error:", error)
       setIsTyping(false)
-      addBotMessage("Sorry, could not restart. Please try again.", "bot",)
+      addBotMessage("Sorry, could not restart. Please try again.", "bot")
     }
   }, [apiBaseUrl, botId, genId, welcomeMessage, botName, addBotMessage, setManagedTimeout])
 
@@ -351,7 +335,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const welcomeMsg: BubbleMessage = {
           id: genId(),
           type: "bot",
-          content: data.greeting || welcomeMessage || `Hi! I'm ${botName}`,
+          content: data.greeting || welcomeMessage || `Hi! I'm ${botName}. How can I help?`,
           timestamp: new Date().toISOString(),
         }
 
@@ -381,7 +365,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
       } catch (error) {
         console.error("❌ Failed to initialize chat:", error)
-        initializedRef.current = false // Allow retry on error
+        initializedRef.current = false
 
         const welcomeMsg: BubbleMessage = {
           id: genId(),
@@ -400,8 +384,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
 
     initializeChat()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [apiBaseUrl, botId, botName, welcomeMessage, genId, setManagedTimeout, addBotMessage, handleContactSupport])
 
   const handleNameSubmit = useCallback(() => {
     if (!inputText.trim()) return
@@ -483,8 +466,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setCurrentStep("chatting")
         addBotMessage("Perfect! You're now connected. How can I help you?", "bot")
       })
-    } catch (error: any) {
-      if (error.name === "AbortError") return
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") return
       startTransition(() => {
         setMessages((prev) => [...prev, optimisticMsg])
         setIsTyping(false)
@@ -538,8 +521,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           addBotMessage(data.botResponse.content.text, "bot")
         }
       })
-    } catch (error: any) {
-      if (error.name === "AbortError") return
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") return
       startTransition(() => {
         setMessages((prev) => [...prev, optimisticMsg])
         setIsTyping(false)
@@ -563,17 +546,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           setMessages((prev) => {
             const existingIds = new Set(prev.map((m) => m.id))
             const newMessages = allMessages.filter(
-              (m: any) => !existingIds.has(m.id) && (m.sender_type === "AGENT" || m.sender_type === "BOT"),
+              (m: Message) => !existingIds.has(m.id) && (m.sender_type === "AGENT" || m.sender_type === "BOT"),
             )
 
             if (newMessages.length === 0) return prev
 
-            const newBubbles = newMessages.map((m: any) => ({
+            const newBubbles = newMessages.map((m: Message) => ({
               id: m.id,
               type: m.sender_type === "AGENT" ? "agent" : "bot",
-              content: m.content?.text || "",
-              timestamp: m.created_at,
-              agentName: m.sender_name,
+              content: m.content.text,
+              timestamp: m.timestamp,
+              agentName: m.agent_info?.name,
             }))
 
             return [...prev, ...newBubbles]
@@ -582,31 +565,42 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       } catch (error) {
         console.error("Polling error:", error)
       }
-    }, 2000)
+    }, 3000)
 
     return () => clearInterval(pollInterval)
   }, [currentStep, conversation, apiBaseUrl])
 
-  const handleSendMessage = useCallback(() => {
+  const handleSubmit = useCallback(() => {
+    if (!inputText.trim()) return
+
     switch (currentStep) {
       case "asking-name":
-        handleNameSubmit()
-        break
+        return handleNameSubmit()
       case "asking-email":
-        handleEmailSubmit()
-        break
+        return handleEmailSubmit()
       case "chatting":
-        handleChatMessage()
-        break
+        return handleChatMessage()
     }
-  }, [currentStep, handleNameSubmit, handleEmailSubmit, handleChatMessage])
+  }, [currentStep, inputText, handleNameSubmit, handleEmailSubmit, handleChatMessage])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
-    }
-  }
+  const handleKeyPress = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault()
+        handleSubmit()
+      }
+    },
+    [handleSubmit],
+  )
+
+  const placeholder =
+    currentStep === "asking-name"
+      ? "Enter your name..."
+      : currentStep === "asking-email"
+        ? "Enter your email..."
+        : "Type your message..."
+
+  const showInput = currentStep === "asking-name" || currentStep === "asking-email" || currentStep === "chatting"
 
   useEffect(() => {
     if (botConfig) {
@@ -623,28 +617,32 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div
       ref={containerRef}
       className={cn(
-        "cali-chat-widget w-[380px] h-[600px] rounded-2xl bg-theme-base-100 shadow-2xl flex flex-col overflow-hidden border border-theme-base-300",
-        featureUI?.darkMode && "dark"
+        "cali-chat-widget w-[var(--chat-width)] h-[var(--chat-height)] rounded-2xl bg-background shadow-2xl flex flex-col overflow-hidden border border-border",
+        featureUI?.darkMode && "dark",
       )}
       style={{
-        fontFamily: theme.typography.fontFamily as string,
+        fontFamily: (theme.typography?.fontFamily as string) || "system-ui",
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-theme-base bg-theme-primary">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-border bg-primary">
         <div className="flex items-center gap-3">
           <Avatar src={avatarSrc} fallback={botName} size="md" />
           <div>
-            <h2 className="font-semibold text-theme-primary-content">{botName}</h2>
-            {isTyping && <p className="text-xs text-theme-primary-content opacity-80">typing...</p>}
+            <h2 className="font-semibold text-primary-foreground">{botName}</h2>
+            {isTyping && <p className="text-xs text-primary-foreground opacity-80">typing...</p>}
           </div>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-colors" aria-label="Close chat">
-          <X className="w-5 h-5 text-theme-primary-content" />
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+          aria-label="Close chat"
+        >
+          <X className="w-5 h-5 text-primary-foreground" />
         </button>
       </div>
 
-      {/* Messages Container */}
+      {/* Messages */}
       <ScrollArea.Root className="flex-1 overflow-hidden">
         <ScrollArea.Viewport className="w-full h-full">
           <div className="flex flex-col gap-4 p-4">
@@ -656,56 +654,66 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   return <BotMessage key={msg.id} content={msg.content} avatarSrc={avatarSrc} botName={botName} />
                 case "action-buttons":
                   return <ActionButtons key={msg.id} actions={msg.actions || []} avatarSrc={avatarSrc} />
-                case "agent":
-                  return <AgentMessage key={msg.id} content={msg.content} agentName={msg.agentName} />
                 case "conversational-question":
                   return (
-                    <ConversationalQuestion
-                      key={msg.id}
-                      question={msg.question || ""}
-                      options={msg.options || []}
-                      avatarSrc={avatarSrc}
-                      botName={botName}
-                      onSelectOption={handleOptionSelect}
-                    />
+                    <div key={msg.id} className="flex items-start gap-3">
+                      <Avatar src={avatarSrc} fallback={botName} size="sm" className="flex-shrink-0" />
+                      <div className="flex-1">
+                        <ConversationalQuestion
+                          question={{
+                            id: msg.id,
+                            text: msg.question || "",
+                            type: msg.options && msg.options.length > 0 ? "single" : "text",
+                            options: msg.options || [],
+                          }}
+                          onAnswer={(answer) => {
+                            if (typeof answer === "string") {
+                              handleOptionSelect(answer)
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
                   )
                 default:
                   return null
               }
             })}
-            {isTyping && featureChat?.showTypingIndicator !== false && <TypingIndicator avatarSrc={avatarSrc} botName={botName} />}
+
+            {isTyping && <TypingIndicator avatarSrc={avatarSrc} botName={botName} />}
+
             <div ref={scrollRef} />
           </div>
         </ScrollArea.Viewport>
-        <ScrollArea.Scrollbar orientation="vertical" className="w-2" />
+        <ScrollArea.Scrollbar
+          className="flex touch-none select-none w-2 bg-transparent p-0.5"
+          orientation="vertical"
+        >
+          <ScrollArea.Thumb className="relative flex-1 rounded-full bg-muted-foreground/30 hover:bg-muted-foreground/50 transition-colors" />
+        </ScrollArea.Scrollbar>
       </ScrollArea.Root>
 
-      {/* Input Area - Only show when user input is needed */}
-      {currentStep !== "welcome" && (
-        <div className="border-t border-theme-base bg-theme-base-100 p-4">
+      {/* Input */}
+      {showInput && (
+        <div className="p-4 border-t border-border bg-background">
           <div className="flex gap-2">
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                currentStep === "asking-name"
-                  ? "Enter your name..."
-                  : currentStep === "asking-email"
-                    ? "Enter your email..."
-                    : "Type your message..."
-              }
-              className="flex-1 px-4 py-2 rounded-lg bg-theme-base-200 border border-theme-base focus:outline-none focus:ring-2 focus:ring-theme-primary text-theme-base-content placeholder:text-theme-neutral disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isTyping || isPending}
+              onKeyDown={handleKeyPress}
+              placeholder={placeholder}
+              disabled={isTyping}
+              className="flex-1 px-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
             />
-            <Button 
-              onClick={handleSendMessage} 
-              disabled={!inputText.trim() || isTyping || isPending} 
-              className="px-4 py-2"
+            <button
+              onClick={handleSubmit}
+              disabled={!inputText.trim() || isTyping}
+              className="w-10 h-10 p-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+              aria-label="Send message"
             >
-              <Send className="w-4 h-4" />
-            </Button>
+              <Send className="w-5 h-5" />
+            </button>
           </div>
         </div>
       )}

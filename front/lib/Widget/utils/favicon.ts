@@ -100,3 +100,44 @@ export function getSiteName(debug = true): string {
     return window.location.hostname;
   }
 }
+
+/**
+ * Updates the page favicon to the bot's avatar or provided URL.
+ * @param faviconUrl - URL of the favicon to set
+ * @param debug - Enable debug logging
+ */
+export function updateFavicon(faviconUrl: string | undefined, debug = false): void {
+  if (!faviconUrl) {
+    if (debug) console.log("[FAVICON] No favicon URL provided, skipping update");
+    return;
+  }
+
+  try {
+    const log = (...args: any[]) => debug && console.log("[FAVICON]", ...args);
+
+    log("Updating favicon to:", faviconUrl);
+
+    // Remove existing favicon links
+    const existingLinks = document.querySelectorAll<HTMLLinkElement>(
+      'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+    );
+    
+    existingLinks.forEach(link => {
+      log("Removing existing favicon link:", link.href);
+      link.remove();
+    });
+
+    // Create new favicon link
+    const link = document.createElement("link");
+    link.rel = "icon";
+    link.type = "image/png";
+    link.href = faviconUrl;
+
+    // Append to head
+    document.head.appendChild(link);
+    log("✅ Favicon updated successfully");
+
+  } catch (error) {
+    console.error("[FAVICON] Error updating favicon:", error);
+  }
+}

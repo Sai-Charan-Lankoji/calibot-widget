@@ -89,6 +89,7 @@ export interface FeatureForms {
 export interface BotConfiguration {
   id: string;
   bot_name: string;
+  avatar?: string;
   welcome_message?: string;
 
   // Theme columns (flat structure)
