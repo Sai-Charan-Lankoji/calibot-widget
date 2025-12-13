@@ -12,6 +12,10 @@ app.use((req, res, next) => {
     next();
 });
 
+// ============================================
+// WIDGET CONFIGURATION ENDPOINTS
+// ============================================
+
 // Get widget configuration (OPTIMIZED - No FAQs)
 app.get('/api/widget/init/:botId', async (req, res) => {
     try {
@@ -22,9 +26,7 @@ app.get('/api/widget/init/:botId', async (req, res) => {
         const { rows: botRows } = await query(
             `SELECT 
                 b.id,
-                b.name,
-                bc.id as config_id,
-                bc.bot_name,
+                b.name as bot_name,
                 bc.welcome_message,
                 bc.theme_colors,
                 bc.theme_typography,
@@ -49,9 +51,7 @@ app.get('/api/widget/init/:botId', async (req, res) => {
             const { rows: defaultBotRows } = await query(
                 `SELECT 
                     b.id,
-                    b.name,
-                    bc.id as config_id,
-                    bc.bot_name,
+                    b.name as bot_name,
                     bc.welcome_message,
                     bc.theme_colors,
                     bc.theme_typography,
@@ -76,12 +76,11 @@ app.get('/api/widget/init/:botId', async (req, res) => {
             });
         }
 
-        // Parse JSONB fields (they come as objects from PostgreSQL)
+        // Parse JSONB fields
         const response = {
             bot: {
                 id: bot.id,
-                name: bot.name,
-                bot_name: bot.bot_name || bot.name,
+                bot_name: bot.bot_name,
                 welcome_message: bot.welcome_message || 'Hi! How can I help you?',
                 theme_colors: bot.theme_colors || {},
                 theme_typography: bot.theme_typography || {},
@@ -136,6 +135,7 @@ app.put('/api/widget/config/:botId', async (req, res) => {
             }
         }
 
+        // Update bot name in bots table
         if (updates.bot_name) {
             await query('UPDATE bots SET name = $1 WHERE id = $2', [updates.bot_name, botId]);
         }
@@ -201,102 +201,316 @@ app.get('/api/admin/configs', async (req, res) => {
     }
 });
 
-// Get all conversations
-app.get('/api/admin/conversations', async (req, res) => {
-    try {
-        const { rows: conversations } = await query(`
-      SELECT c.*, 
-        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) as message_count,
-        (SELECT row_to_json(m) FROM (
-          SELECT content, timestamp FROM messages WHERE conversation_id = c.id ORDER BY timestamp DESC LIMIT 1
-        ) m) as last_message
-      FROM conversations c ORDER BY c.updated_at DESC NULLS LAST
-    `);
-        res.json(conversations);
-    } catch (error) {
-        console.error('Error loading conversations:', error);
-        res.status(500).json({ error: 'Failed to load conversations' });
-    }
-});
+// ============================================
+// LIVE CHAT SESSION ENDPOINTS
+// ============================================
 
-// Create conversation  
-app.post('/api/conversations', async (req, res) => {
+// Start new live chat session
+app.post('/api/live-chat/session/start', async (req, res) => {
     try {
-        const { botId, visitor_info, channel, attributes } = req.body;
-        const { rows: convRows } = await query(
-            `INSERT INTO conversations (bot_id, email, phone_number, channel, attributes)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [botId, visitor_info?.email || null, visitor_info?.phone || null, channel || 'web', JSON.stringify(attributes || {})]
+        const { bot_id, visitor_id, visitor_name, visitor_email, metadata } = req.body;
+        
+        console.log(`🚀 Starting live chat session for bot: ${bot_id}`);
+        
+        // Check if visitor already has active session
+        const { rows: existingSessions } = await query(
+            `SELECT id FROM live_chat_session 
+             WHERE visitor_id = $1 AND bot_id = $2 AND status = 'ACTIVE'`,
+            [visitor_id, bot_id]
         );
-
-        const conversation = convRows[0];
-        console.log(`   ✅ Conversation created: ${conversation.id}`);
-        res.json({ conversation, sessionToken: conversation.id });
-    } catch (error) {
-        console.error('   ❌ Error creating conversation:', error);
-        res.status(500).json({ error: 'Failed to create conversation' });
-    }
-});
-
-// Get messages
-app.get('/api/conversations/:conversationId/messages', async (req, res) => {
-    try {
-        const { rows: messages } = await query(
-            'SELECT * FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC',
-            [req.params.conversationId]
-        );
-        res.json({ messages });
-    } catch (error) {
-        console.error('Error fetching messages:', error);
-        res.status(500).json({ error: 'Failed to fetch messages' });
-    }
-});
-
-// Send message
-app.post('/api/conversations/:conversationId/messages', async (req, res) => {
-    try {
-        const { conversationId } = req.params;
-        const { content, sender_type } = req.body;
-
-        const { rows: msgRows } = await query(
-            `INSERT INTO messages (conversation_id, sender_type, content) VALUES ($1, $2, $3) RETURNING *`,
-            [conversationId, sender_type, JSON.stringify(content)]
-        );
-
-        const userMessage = msgRows[0];
-        console.log(`   💬 Message: "${content.text}"`);
-        await query('UPDATE conversations SET updated_at = NOW() WHERE id = $1', [conversationId]);
-
-        let botMessage = null;
-        if (sender_type === 'USER') {
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
-            const botText = ["Thanks for your message! I'm here to help.", "I understand. Could you tell me more?",
-                "Let me check that for you.", "That's a good question."][Math.floor(Math.random() * 4)];
-            const { rows: botMsgRows } = await query(
-                `INSERT INTO messages (conversation_id, sender_type, content) VALUES ($1, 'BOT', $2) RETURNING *`,
-                [conversationId, JSON.stringify({ text: botText })]
-            );
-            botMessage = botMsgRows[0];
-            console.log(`   🤖 Bot replied`);
+        
+        if (existingSessions.length > 0) {
+            const sessionId = existingSessions[0].id;
+            console.log(`   ♻️ Resuming existing session: ${sessionId}`);
+            return res.json({ 
+                session_id: sessionId,
+                session_token: sessionId,
+                resumed: true 
+            });
         }
+        
+        // Create new session
+        const { rows } = await query(
+            `INSERT INTO live_chat_session 
+             (bot_id, visitor_id, visitor_name, visitor_email, status, metadata)
+             VALUES ($1, $2, $3, $4, 'ACTIVE', $5)
+             RETURNING id`,
+            [bot_id, visitor_id, visitor_name, visitor_email, JSON.stringify(metadata || {})]
+        );
+        
+        const sessionId = rows[0].id;
+        
+        console.log(`   ✅ New live chat session created: ${sessionId}`);
+        
+        res.json({ 
+            session_id: sessionId,
+            session_token: sessionId,
+            resumed: false 
+        });
+    } catch (error) {
+        console.error('   ❌ Error creating session:', error);
+        res.status(500).json({ error: 'Failed to create session' });
+    }
+});
 
-        res.json({ message: userMessage, botResponse: botMessage });
+// Get session details
+app.get('/api/live-chat/session/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        const { rows } = await query(
+            'SELECT * FROM live_chat_session WHERE id = $1',
+            [sessionId]
+        );
+        
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        
+        res.json({ session: rows[0] });
+    } catch (error) {
+        console.error('Error fetching session:', error);
+        res.status(500).json({ error: 'Failed to fetch session' });
+    }
+});
+
+// Send message in live chat session
+app.post('/api/live-chat/session/:sessionId/message', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { content, sender_type, message_type } = req.body;
+        
+        // Verify session exists and is active
+        const { rows: sessions } = await query(
+            'SELECT * FROM live_chat_session WHERE id = $1',
+            [sessionId]
+        );
+        
+        if (sessions.length === 0) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        
+        const session = sessions[0];
+        
+        // Insert message
+        const { rows: msgRows } = await query(
+            `INSERT INTO live_chat_message 
+             (session_id, sender_type, sender_name, message_type, content)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [
+                sessionId, 
+                sender_type || 'VISITOR',
+                session.visitor_name,
+                message_type || 'TEXT',
+                content
+            ]
+        );
+        
+        const message = msgRows[0];
+        
+        // Update session timestamp
+        await query(
+            'UPDATE live_chat_session SET updated_at = NOW() WHERE id = $1',
+            [sessionId]
+        );
+        
+        console.log(`   💬 Message sent in session ${sessionId}`);
+        
+        // If bot should respond
+        let botMessage = null;
+        if (sender_type === 'VISITOR' && session.bot_chat_started && session.status === 'ACTIVE') {
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+            
+            const botResponses = [
+                "Thanks for your message! I'm here to help.",
+                "I understand. Could you tell me more?",
+                "Let me check that for you.",
+                "That's a good question. Let me assist you with that."
+            ];
+            const botText = botResponses[Math.floor(Math.random() * botResponses.length)];
+            
+            const { rows: botMsgRows } = await query(
+                `INSERT INTO live_chat_message 
+                 (session_id, sender_type, sender_name, message_type, content)
+                 VALUES ($1, 'BOT', $2, 'TEXT', $3)
+                 RETURNING *`,
+                [sessionId, 'Support Bot', botText]
+            );
+            
+            botMessage = botMsgRows[0];
+            console.log(`   🤖 Bot replied in session ${sessionId}`);
+        }
+        
+        res.json({ 
+            message,
+            bot_response: botMessage
+        });
     } catch (error) {
         console.error('   ❌ Error sending message:', error);
         res.status(500).json({ error: 'Failed to send message' });
     }
 });
 
-// Agent message
-app.post('/api/admin/conversations/:conversationId/agent-message', async (req, res) => {
+// Get messages for a session
+app.get('/api/live-chat/session/:sessionId/messages', async (req, res) => {
     try {
-        const { conversationId } = req.params;
-        const { text } = req.body;
-        const { rows: msgRows } = await query(
-            `INSERT INTO messages (conversation_id, sender_type, content) VALUES ($1, 'AGENT', $2) RETURNING *`,
-            [conversationId, JSON.stringify({ text })]
+        const { sessionId } = req.params;
+        const { after } = req.query;
+        
+        let queryText = `
+            SELECT * FROM live_chat_message 
+            WHERE session_id = $1
+        `;
+        const params = [sessionId];
+        
+        if (after) {
+            queryText += ` AND created_at > $2`;
+            params.push(after);
+        }
+        
+        queryText += ` ORDER BY created_at ASC`;
+        
+        const { rows } = await query(queryText, params);
+        
+        res.json({ messages: rows });
+    } catch (error) {
+        console.error('Error fetching messages:', error);
+        res.status(500).json({ error: 'Failed to fetch messages' });
+    }
+});
+
+// Transfer session to agent
+app.post('/api/live-chat/session/:sessionId/transfer', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { reason } = req.body;
+        
+        // Get session details
+        const { rows: sessions } = await query(
+            'SELECT bot_id, tenant_id FROM live_chat_session WHERE id = $1',
+            [sessionId]
         );
-        await query('UPDATE conversations SET updated_at = NOW() WHERE id = $1', [conversationId]);
+        
+        if (sessions.length === 0) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        
+        const session = sessions[0];
+        
+        // Update session status
+        await query(
+            `UPDATE live_chat_session 
+             SET status = 'TRANSFERRED', 
+                 transferred_to_agent = NOW(),
+                 bot_chat_started = false
+             WHERE id = $1`,
+            [sessionId]
+        );
+        
+        // Add to queue
+        const { rows: queueRows } = await query(
+            `INSERT INTO live_chat_queue 
+             (session_id, bot_id, tenant_id, status, request_reason, position)
+             VALUES ($1, $2, $3, 'PENDING', $4, 
+                     (SELECT COALESCE(MAX(position), 0) + 1 FROM live_chat_queue WHERE status = 'PENDING'))
+             RETURNING *`,
+            [sessionId, session.bot_id, session.tenant_id || session.bot_id, reason || 'User requested human agent']
+        );
+        
+        // Send system message
+        await query(
+            `INSERT INTO live_chat_message 
+             (session_id, sender_type, message_type, content)
+             VALUES ($1, 'SYSTEM', 'SYSTEM', $2)`,
+            [sessionId, 'Transferring you to a human agent. Please wait...']
+        );
+        
+        console.log(`   🔄 Session ${sessionId} transferred to agent queue`);
+        
+        res.json({ 
+            success: true,
+            queue_position: queueRows[0].position,
+            message: 'Session transferred to agent queue'
+        });
+    } catch (error) {
+        console.error('   ❌ Error transferring session:', error);
+        res.status(500).json({ error: 'Failed to transfer session' });
+    }
+});
+
+// End session
+app.post('/api/live-chat/session/:sessionId/end', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        await query(
+            `UPDATE live_chat_session 
+             SET status = 'CLOSED', ended_at = NOW()
+             WHERE id = $1`,
+            [sessionId]
+        );
+        
+        // Remove from queue if present
+        await query(
+            `UPDATE live_chat_queue 
+             SET status = 'COMPLETED'
+             WHERE session_id = $1`,
+            [sessionId]
+        );
+        
+        console.log(`   ✅ Session ended: ${sessionId}`);
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('   ❌ Error ending session:', error);
+        res.status(500).json({ error: 'Failed to end session' });
+    }
+});
+
+// ============================================
+// ADMIN ENDPOINTS
+// ============================================
+
+// Get all live chat sessions
+app.get('/api/admin/live-chat/sessions', async (req, res) => {
+    try {
+        const { rows: sessions } = await query(`
+            SELECT s.*, 
+                (SELECT COUNT(*) FROM live_chat_message m WHERE m.session_id = s.id) as message_count,
+                (SELECT row_to_json(m) FROM (
+                    SELECT content, created_at, sender_type FROM live_chat_message 
+                    WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1
+                ) m) as last_message
+            FROM live_chat_session s 
+            ORDER BY s.updated_at DESC
+        `);
+        res.json(sessions);
+    } catch (error) {
+        console.error('Error loading sessions:', error);
+        res.status(500).json({ error: 'Failed to load sessions' });
+    }
+});
+
+// Agent sends message
+app.post('/api/admin/live-chat/session/:sessionId/agent-message', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { text, agent_name } = req.body;
+        
+        const { rows: msgRows } = await query(
+            `INSERT INTO live_chat_message 
+             (session_id, sender_type, sender_name, message_type, content)
+             VALUES ($1, 'AGENT', $2, 'TEXT', $3)
+             RETURNING *`,
+            [sessionId, agent_name || 'Agent', text]
+        );
+        
+        await query(
+            'UPDATE live_chat_session SET updated_at = NOW() WHERE id = $1',
+            [sessionId]
+        );
+        
         res.json(msgRows[0]);
     } catch (error) {
         console.error('Error sending agent message:', error);
@@ -326,7 +540,6 @@ function buildQuestionTree(faqs) {
         if (rawParent && typeof rawParent === 'string') {
             const trimmed = rawParent.trim();
 
-            // Handle broken LLM format: "rankYes" instead of "1:Yes"
             if (trimmed.startsWith('rank')) {
                 const optionText = trimmed.substring(4).trim();
                 const parentQuestion = faqs.find(q =>
@@ -356,7 +569,6 @@ function buildQuestionTree(faqs) {
         if (!detectedParentRank) roots.push(node);
     });
 
-    // Link children to parents
     Object.values(map).forEach(node => {
         if (node.parent_rank && map[node.parent_rank]) {
             map[node.parent_rank].children.push(node);
@@ -372,9 +584,8 @@ app.post('/api/chat/:botId/start', async (req, res) => {
         const { botId } = req.params;
         const sessionId = req.headers['x-session-id'] || Date.now().toString();
 
-        // Get bot configuration
         const { rows: botRows } = await query(
-            `SELECT b.id, b.name, bc.welcome_message, bc.bot_name
+            `SELECT b.id, b.name, bc.welcome_message
              FROM bots b
              LEFT JOIN bot_configurations bc ON b.config_id = bc.id
              WHERE b.id = $1`,
@@ -382,10 +593,9 @@ app.post('/api/chat/:botId/start', async (req, res) => {
         );
 
         const bot = botRows[0];
-        const botName = bot?.bot_name || bot?.name || 'Support Assistant';
+        const botName = bot?.name || 'Support Assistant';
         const welcomeMessage = bot?.welcome_message || `Hi! Welcome to ${botName}. How can I assist you today?`;
 
-        // Get approved FAQs with metadata
         const { rows: faqs } = await query(
             `SELECT id, question, answer, options, metadata
              FROM faq
@@ -428,9 +638,6 @@ app.post('/api/chat/:botId/start', async (req, res) => {
     }
 });
 
-// POST /api/chat/:botId/message - Handle user response in conversation
-// POST /api/chat/:botId/message - Handle user response in conversation
-// POST /api/chat/:botId/message - Handle user response in conversation
 app.post('/api/chat/:botId/message', async (req, res) => {
     try {
         const { botId } = req.params;
@@ -444,7 +651,6 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
         console.log(`\n💬 Processing message - Rank: ${current_rank}, Input: "${userInput}"`);
 
-        // Get FAQs and rebuild tree
         const { rows: faqs } = await query(
             `SELECT id, question, answer, options, metadata
              FROM faq
@@ -464,7 +670,6 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
         const tree = buildQuestionTree(faqs);
 
-        // Build flat map
         const flatMap = {};
         const traverse = (n) => {
             flatMap[n.rank] = n;
@@ -484,7 +689,6 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
         let nextQuestion = null;
 
-        // BRANCHING: Handle option-based questions
         if (currentQuestion.options && currentQuestion.options.length > 0) {
             const validOption = currentQuestion.options.find(opt =>
                 opt.toLowerCase() === selected_option?.toLowerCase() ||
@@ -507,55 +711,37 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
             console.log(`✅ Valid option selected: "${validOption}"`);
 
-            // Robust matching: Try multiple strategies to find the next question
             nextQuestion = currentQuestion.children.find(child => {
                 const rawParent = child.parent_rank;
                 if (!rawParent) return false;
 
-                // Strategy 1: Exact match with "rank:option" format
                 if (rawParent === `${current_rank}:${validOption}`) return true;
-
-                // Strategy 2: Case-insensitive match
                 if (rawParent.toLowerCase() === `${current_rank}:${validOption}`.toLowerCase()) return true;
 
-                // Strategy 3: Parse and match parts
                 const parts = String(rawParent).split(':');
                 const parentPart = parts[0]?.trim();
                 const optionPart = parts.slice(1).join(':').trim();
 
                 if (parentPart && String(parentPart) === String(current_rank)) {
-                    if (!optionPart) return true; // Match rank only
+                    if (!optionPart) return true;
                     
                     const lhs = optionPart.toLowerCase();
                     const rhs = validOption.toLowerCase();
                     
-                    // Exact match
                     if (lhs === rhs) return true;
-                    
-                    // Partial match (contains)
                     if (lhs.includes(rhs) || rhs.includes(lhs)) return true;
                 }
 
-                // Strategy 4: Fuzzy match on raw parent_rank
                 if (rawParent.toLowerCase().includes(validOption.toLowerCase())) return true;
 
                 return false;
             });
 
-            console.log(`🔍 Looking for child with parent_rank matching: ${current_rank}:${validOption}`);
-            console.log(`   Available children:`, currentQuestion.children.map(c => ({
-                rank: c.rank,
-                parent_rank: c.parent_rank
-            })));
-
-            // Fallback to first child if no exact match found
             if (!nextQuestion && currentQuestion.children.length > 0) {
-                console.log(`⚠️  No exact child match for option="${validOption}" on rank=${current_rank}`);
-                console.log(`    Falling back to first child: rank=${currentQuestion.children[0].rank}`);
+                console.log(`⚠️  No exact child match, using first child`);
                 nextQuestion = currentQuestion.children[0];
             }
 
-            // If still no next question, end the conversation
             if (!nextQuestion) {
                 console.log(`🏁 No follow-up question for option: "${validOption}"`);
                 return res.json({
@@ -567,12 +753,9 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             }
 
         } else {
-            // LINEAR / TEXT INPUT: Move to next rank or end
-            
-            // Detect email input (terminal state)
             const emailLike = typeof user_answer === 'string' && /\S+@\S+\.\S+/.test(user_answer.trim());
             if (emailLike) {
-                console.log(`📧 Detected email input for rank ${current_rank}: ${user_answer.trim()}. Ending flow.`);
+                console.log(`📧 Detected email input, ending flow`);
                 return res.json({ 
                     acknowledged: 'Thank you!',
                     end: true, 
@@ -582,26 +765,15 @@ app.post('/api/chat/:botId/message', async (req, res) => {
 
             const nextRank = currentQuestion.rank + 1;
             nextQuestion = Object.values(flatMap).find(q => q.rank === nextRank);
-            console.log(`→ Linear flow: moving to rank ${nextRank}`);
 
-            // Log available ranks for debugging
-            if (!nextQuestion) {
-                console.log(`ℹ️  Question rank ${current_rank} has no options (text input). No next question found (rank ${nextRank}).`);
-                console.log(`    Available question ranks: ${Object.keys(flatMap).join(', ')}`);
-            } else {
-                // Prevent repeating email questions
-                const nextIsEmailQuestion = /email|e-mail|best email/i.test(nextQuestion.question || '');
-                if (nextIsEmailQuestion) {
-                    console.log(`ℹ️  Next question (rank ${nextQuestion.rank}) appears to be an email capture. Finishing instead of repeating.`);
-                    return res.json({ 
-                        acknowledged: 'Thank you!',
-                        end: true, 
-                        message: "Thank you! This completes the conversation." 
-                    });
-                }
+            if (nextQuestion && /email|e-mail|best email/i.test(nextQuestion.question || '')) {
+                return res.json({ 
+                    acknowledged: 'Thank you!',
+                    end: true, 
+                    message: "Thank you! This completes the conversation." 
+                });
             }
 
-            // If no next question in linear flow, end conversation
             if (!nextQuestion) {
                 console.log(`🏁 No next question in linear flow`);
                 return res.json({
@@ -613,7 +785,6 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             }
         }
 
-        // Return next question
         if (nextQuestion) {
             console.log(`→ Next question: Rank ${nextQuestion.rank}`);
             return res.json({
@@ -628,7 +799,6 @@ app.post('/api/chat/:botId/message', async (req, res) => {
             });
         }
 
-        // Fallback end of conversation
         console.log(`🏁 End of conversation (fallback)`);
         return res.json({
             acknowledged: 'Thank you!',

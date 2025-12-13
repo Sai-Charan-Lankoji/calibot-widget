@@ -4,11 +4,13 @@
   "type": "module",
   "description": "Mock API server for testing Cali Chat Widget",
   "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "build:ncc": "ncc build server.js -o dist/ncc --minify ",
-    "build:esbuild": "esbuild server.js --bundle --platform=node --target=node20 --outfile=dist/esbuild/index.js --minify --loader:.node=copy --asset-names=[name]"
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
     "@ngrok/ngrok": "^1.6.0",
