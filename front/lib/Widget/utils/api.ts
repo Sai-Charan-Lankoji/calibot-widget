@@ -1,9 +1,8 @@
 import { 
   InitResponse, 
-  ConversationResponse, 
-  MessageResponse, 
-  Message,
-  Conversation
+  MessageResponse,
+  LiveChatMessage,
+  LiveChatSession
 } from '@/types';
 
 export class ApiError extends Error {
@@ -142,6 +141,160 @@ export class WidgetApi {
   }
 
   /**
+   * Get bot configuration (theme + features)
+   */
+  async getBotTheme(botId: string, signal?: AbortSignal): Promise<{
+    bot: {
+      id: string;
+      name: string;
+      bot_name: string;
+      welcome_message: string;
+      theme_colors?: any;
+      theme_typography?: any;
+      theme_layout?: any;
+      theme_branding?: any;
+      feature_chat?: any;
+      feature_ui?: any;
+      feature_faq?: any;
+      feature_forms?: any;
+    };
+  }> {
+    return this.fetch(`/api/widget/init/${botId}`, { method: 'GET' }, signal);
+  }
+
+  // ============================================
+  // LIVE CHAT SESSION ENDPOINTS (NEW)
+  // ============================================
+
+  /**
+   * Start live chat session
+   */
+  async startLiveChatSession(
+    botId: string,
+    sessionData: {
+      visitor_id: string;
+      visitor_name: string;
+      visitor_email: string;
+      metadata?: Record<string, any>;
+    },
+    signal?: AbortSignal
+  ): Promise<{
+    session_id: string;
+    session_token: string;
+    resumed: boolean;
+  }> {
+    return this.fetch(
+      '/api/live-chat/session/start',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          bot_id: botId,
+          ...sessionData,
+        }),
+      },
+      signal
+    );
+  }
+
+  /**
+   * Send message in live chat session
+   */
+  async sendSessionMessage(
+    sessionId: string,
+    messageData: {
+      content: string;
+      sender_type: 'VISITOR' | 'AGENT' | 'BOT';
+      message_type: 'TEXT' | 'IMAGE' | 'FILE';
+      file_url?: string;
+    },
+    signal?: AbortSignal
+  ): Promise<{
+    message: LiveChatMessage;
+    bot_response?: LiveChatMessage;
+  }> {
+    return this.fetch(
+      `/api/live-chat/session/${sessionId}/message`,
+      {
+        method: 'POST',
+        body: JSON.stringify(messageData),
+      },
+      signal
+    );
+  }
+
+  /**
+   * Get session messages (with optional polling support)
+   */
+  async getSessionMessages(
+    sessionId: string,
+    after?: string,
+    signal?: AbortSignal
+  ): Promise<{ messages: LiveChatMessage[] }> {
+    const queryParams = after ? `?after=${encodeURIComponent(after)}` : '';
+    return this.fetch(
+      `/api/live-chat/session/${sessionId}/messages${queryParams}`,
+      { method: 'GET' },
+      signal
+    );
+  }
+
+  /**
+   * Get session details
+   */
+  async getSessionDetails(
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<{ session: LiveChatSession }> {
+    return this.fetch(
+      `/api/live-chat/session/${sessionId}`,
+      { method: 'GET' },
+      signal
+    );
+  }
+
+  /**
+   * Transfer session to agent
+   */
+  async transferToAgent(
+    sessionId: string,
+    reason?: string,
+    signal?: AbortSignal
+  ): Promise<{
+    success: boolean;
+    queue_position: number;
+    message: string;
+  }> {
+    return this.fetch(
+      `/api/live-chat/session/${sessionId}/transfer`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      },
+      signal
+    );
+  }
+
+  /**
+   * End live chat session
+   */
+  async endLiveChatSession(
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<{ success: boolean }> {
+    return this.fetch(
+      `/api/live-chat/session/${sessionId}/end`,
+      {
+        method: 'POST',
+      },
+      signal
+    );
+  }
+
+  // ============================================
+  // CONVERSATIONAL FAQ CHAT ENDPOINTS
+  // ============================================
+
+  /**
    * Start conversational chat session
    */
   async startChat(botId: string, signal?: AbortSignal): Promise<{
@@ -204,111 +357,108 @@ export class WidgetApi {
     );
   }
 
-  /**
-   * Get bot configuration (theme + features)
-   * This is the ONLY initial API call
-   */
-  async getBotTheme(botId: string, signal?: AbortSignal): Promise<{
-    bot: {
-      id: string;
-      name: string;
-      bot_name: string;
-      welcome_message: string;
-      theme_colors?: any;
-      theme_typography?: any;
-      theme_layout?: any;
-      theme_branding?: any;
-      feature_chat?: any;
-      feature_ui?: any;
-      feature_faq?: any;
-      feature_forms?: any;
-    };
-  }> {
-    // Use the correct endpoint that exists in your backend
-    return this.fetch(`/api/widget/init/${botId}`, { method: 'GET' }, signal);
-  }
+  // ============================================
+  // DEPRECATED - OLD CONVERSATION ENDPOINTS
+  // (Keep for backward compatibility, but redirect to new endpoints)
+  // ============================================
 
   /**
-   * Create new conversation (for live chat escalation)
+   * @deprecated Use startLiveChatSession instead
    */
   async createConversation(
     botId: string,
     visitorInfo: { name: string; email: string },
     signal?: AbortSignal
-  ): Promise<ConversationResponse> {
-    return this.fetch(
-      '/api/conversations',
+  ): Promise<{
+    conversation: any;
+    sessionToken: string;
+  }> {
+    console.warn('⚠️ createConversation is deprecated, using startLiveChatSession');
+    
+    // Generate visitor ID
+    const visitorId = localStorage.getItem('cali_visitor_id') || crypto.randomUUID();
+    localStorage.setItem('cali_visitor_id', visitorId);
+    
+    const response = await this.startLiveChatSession(
+      botId,
       {
-        method: 'POST',
-        body: JSON.stringify({
-          botId,
-          visitor_info: visitorInfo,
-          channel: 'WEB_WIDGET',
-          attributes: {
-            current_page_url: window.location.href,
-            referrer_url: document.referrer,
-            user_agent: navigator.userAgent,
-          },
-        }),
+        visitor_id: visitorId,
+        visitor_name: visitorInfo.name,
+        visitor_email: visitorInfo.email,
+        metadata: {
+          current_page_url: window.location.href,
+          referrer_url: document.referrer,
+          user_agent: navigator.userAgent,
+        }
       },
       signal
     );
+    
+    // Transform response to match old format
+    return {
+      conversation: {
+        id: response.session_id,
+        bot_id: botId,
+        visitor_info: visitorInfo,
+        channel: 'web',
+        status: 'ACTIVE',
+        started_at: new Date().toISOString(),
+      },
+      sessionToken: response.session_token,
+    };
   }
 
   /**
-   * Send message in live chat conversation
+   * @deprecated Use sendSessionMessage instead
    */
   async sendMessage(
     conversationId: string,
     text: string,
     sessionToken: string,
     signal?: AbortSignal
-  ): Promise<MessageResponse> {
-    return this.fetch(
-      `/api/conversations/${conversationId}/messages`,
+  ): Promise<{
+    message: any;
+    botResponse?: any;
+  }> {
+    console.warn('⚠️ sendMessage is deprecated, using sendSessionMessage');
+    
+    return this.sendSessionMessage(
+      conversationId,
       {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify({
-          content: { text },
-          sender_type: 'VISITOR',
-        }),
+        content: text,
+        sender_type: 'VISITOR',
+        message_type: 'TEXT',
       },
       signal
     );
   }
 
   /**
-   * Get conversation messages (for polling)
+   * @deprecated Use getSessionMessages instead
    */
   async getMessages(
     conversationId: string,
     signal?: AbortSignal
-  ): Promise<{ messages: Message[] }> {
-    return this.fetch(
-      `/api/conversations/${conversationId}/messages`,
-      { method: 'GET' },
-      signal
-    );
+  ): Promise<{ messages: any[] }> {
+    console.warn('⚠️ getMessages is deprecated, using getSessionMessages');
+    return this.getSessionMessages(conversationId, undefined, signal);
   }
 
   /**
-   * End conversation
+   * @deprecated Use endLiveChatSession instead
    */
   async endConversation(
     conversationId: string,
     sessionToken: string,
     signal?: AbortSignal
-  ): Promise<{ success: boolean; conversation: Conversation }> {
-    return this.fetch(
-      `/api/conversations/${conversationId}/end`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ sessionToken }),
-      },
-      signal
-    );
+  ): Promise<{ success: boolean; conversation: any }> {
+    console.warn('⚠️ endConversation is deprecated, using endLiveChatSession');
+    
+    await this.endLiveChatSession(conversationId, signal);
+    
+    return {
+      success: true,
+      conversation: { id: conversationId, status: 'CLOSED' },
+    };
   }
 }

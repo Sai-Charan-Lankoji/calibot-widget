@@ -249,7 +249,7 @@
   /* ============================================
    BORDER UTILITIES
    ============================================ */
-  .border-border {
+   .border-border {
     border-color: var(--color-border);
   }
 
@@ -266,7 +266,7 @@
   }
 
   /* Border Radius */
-  .rounded-sm {
+  .rounded-xs {
     border-radius: var(--radius-sm);
   }
 
@@ -654,7 +654,7 @@
     transform: scale(1.1);
   }
 
-  .focus\:outline-none:focus {
+  .focus\:outline-hidden:focus {
     outline: 2px solid transparent;
     outline-offset: 2px;
   }

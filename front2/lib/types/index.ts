@@ -85,93 +85,29 @@ export interface FeatureForms {
   privacyPolicyUrl: string | null;
 }
 
-// Bot Configuration
+// Updated Bot Configuration
 export interface BotConfiguration {
   id: string;
   bot_name: string;
-  avatar?: string;
   welcome_message?: string;
+
+  // Theme columns (flat structure)
   theme_colors?: ThemeColors;
   theme_typography?: ThemeTypography;
   theme_layout?: ThemeLayout;
   theme_branding?: ThemeBranding;
+
+  // Feature columns (flat structure)
   feature_chat?: FeatureChat;
   feature_ui?: FeatureUI;
   feature_faq?: FeatureFAQ;
   feature_forms?: FeatureForms;
+
   created_at?: string;
   updated_at?: string;
 }
 
-// Live Chat Types
-export interface LiveChatSession {
-  id: string;
-  bot_id: string;
-  tenant_id?: string;
-  visitor_id: string;
-  visitor_name: string;
-  visitor_email: string;
-  status: 'ACTIVE' | 'TRANSFERRED' | 'CLOSED' | 'WAITING';
-  started_at: string;
-  ended_at?: string;
-  bot_chat_started: boolean;
-  transferred_to_agent?: string;
-  assigned_agent_id?: string;
-  metadata?: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface LiveChatMessage {
-  id: string;
-  session_id: string;
-  sender_type: 'VISITOR' | 'AGENT' | 'BOT' | 'SYSTEM';
-  sender_id?: string;
-  sender_name?: string;
-  message_type: 'TEXT' | 'IMAGE' | 'FILE' | 'SYSTEM';
-  content: string;
-  file_url?: string;
-  metadata?: Record<string, any>;
-  is_read: boolean;
-  read_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface LiveChatQueue {
-  id: string;
-  session_id: string;
-  bot_id: string;
-  tenant_id: string;
-  status: 'PENDING' | 'ASSIGNED' | 'COMPLETED' | 'CANCELLED';
-  position: number;
-  request_reason?: string;
-  priority: number;
-  created_at: string;
-  updated_at: string;
-}
-
-// Session Data (stored in sessionStorage)
-export interface SessionData {
-  sessionId: string;
-  sessionToken: string;
-  botId: string;
-  visitorInfo: {
-    name: string;
-    email: string;
-  };
-  createdAt: string;
-  lastActivity: string;
-}
-
-// Visitor Preferences (stored in localStorage)
-export interface VisitorPreferences {
-  theme?: 'light' | 'dark';
-  language?: string;
-  notificationsDismissed?: string[];
-}
-
-// Legacy types for backward compatibility
+// Keep existing types for backward compatibility
 export type VisitorInfo = {
   name: string;
   email: string;
@@ -185,11 +121,6 @@ export interface FAQ {
   tags?: string[];
   category?: string;
   order?: number;
-  options?: string[];
-  metadata?: {
-    rank?: number;
-    parent_question_rank?: string;
-  };
 }
 
 export interface Message {
@@ -235,7 +166,7 @@ export interface ChatSession {
 
 export interface InitResponse {
   bot: BotConfiguration;
-  faqs?: FAQ[];
+  faqs: FAQ[];
 }
 
 export interface ConversationResponse {
@@ -248,18 +179,7 @@ export interface MessageResponse {
   botResponse?: Message;
 }
 
-export interface LiveChatSessionResponse {
-  session_id: string;
-  session_token: string;
-  resumed: boolean;
-}
-
-export interface LiveChatMessageResponse {
-  message: LiveChatMessage;
-  bot_response?: LiveChatMessage;
-}
-
-// Widget Configuration
+// Legacy widget config (for existing implementations)
 export interface WidgetConfig {
   botId: string;
   apiBaseUrl: string;

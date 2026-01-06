@@ -1,0 +1,105 @@
+import { ChatSession } from '@/types';
+
+const SESSION_KEY = 'cali_chat_session';
+const SESSION_TIMEOUT_HOURS = 24;
+
+export class SessionManager {
+  /**
+   * Get active session from sessionStorage
+   * Returns null if session is expired or invalid
+   */
+  static get(): ChatSession | null {
+    try {
+      const data = sessionStorage.getItem(SESSION_KEY);
+      if (!data) return null;
+      
+      const session = JSON.parse(data) as ChatSession;
+      
+      // Validate session structure
+      if (!session.sessionToken || !session.conversationId || !session.createdAt) {
+        console.warn('Invalid session structure, clearing...');
+        this.clear();
+        return null;
+      }
+      
+      // Check expiration (24 hours)
+      const createdAt = new Date(session.createdAt);
+      const now = new Date();
+      const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursDiff > SESSION_TIMEOUT_HOURS) {
+        console.log(`Session expired (${hoursDiff.toFixed(1)}h > ${SESSION_TIMEOUT_HOURS}h), clearing...`);
+        this.clear();
+        return null;
+      }
+      
+      return session;
+    } catch (error) {
+      console.error('Failed to parse session:', error);
+      this.clear();
+      return null;
+    }
+  }
+
+  /**
+   * Save session to sessionStorage
+   */
+  static set(session: ChatSession): void {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      console.log('✅ Session saved:', {
+        conversationId: session.conversationId,
+        visitor: session.visitorInfo.name
+      });
+    } catch (error) {
+      console.error('Failed to save session:', error);
+      throw new Error('Failed to persist session');
+    }
+  }
+
+  /**
+   * Clear session from sessionStorage
+   */
+  static clear(): void {
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+      console.log('🗑️ Session cleared');
+    } catch (error) {
+      console.error('Failed to clear session:', error);
+    }
+  }
+
+  /**
+   * Check if active session exists
+   */
+  static hasActiveSession(): boolean {
+    return this.get() !== null;
+  }
+
+  /**
+   * Get session token only
+   */
+  static getToken(): string | null {
+    const session = this.get();
+    return session?.sessionToken || null;
+  }
+
+  /**
+   * Get conversation ID only
+   */
+  static getConversationId(): string | null {
+    const session = this.get();
+    return session?.conversationId || null;
+  }
+
+  /**
+   * Update visitor info in existing session
+   */
+  static updateVisitorInfo(visitorInfo: Partial<ChatSession['visitorInfo']>): void {
+    const session = this.get();
+    if (session) {
+      session.visitorInfo = { ...session.visitorInfo, ...visitorInfo };
+      this.set(session);
+    }
+  }
+}

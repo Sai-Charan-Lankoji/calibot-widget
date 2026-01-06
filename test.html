@@ -91,17 +91,101 @@
   
 
     <!-- Demo Widget -->
-    <!-- <script src="./dist/cali-chat-widget.umd.js"></script> -->
-    <script src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@latest/dist/cali-chat-widget.umd.js"></script>
+    <script src="./dist/cali-chat-widget.umd.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@v0.0.8/dist/cali-chat-widget.umd.js"></script> -->
+    
     <script>
         // Manual initialization for demo
         CaliChatWidget.init({
             botId: 'bbf342b4-832f-4793-93c3-23d1c91adf95', // or get from DB
+            // apiBaseUrl: 'https://calibot-widget.onrender.com',
             apiBaseUrl: 'http://localhost:3001',
+            avatarSrc: "https://calibrage.in/favicon.ico",
             // primaryColor: '#3B82F6',
-            botName: 'Demo Bot'
+            // botName: 'Demo Bot'
         });
     </script>
+
+    <!-- <script src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@v0.0.8/dist/cali-chat-widget.umd.js"></script> -->
+    <!-- <script src="./omni2/dist/omnichat-widget.js"></script>
+    <script>
+  OmniChat.init({ botId: 'bbf342b4-832f-4793-93c3-23d1c91adf95', apiHost: 'https://calibot-widget.onrender.com' });
+</script> -->
+
+
+<!-- <script>
+  (function initCaliChatWidget() {
+    // prevent double initialization
+    if (window.__CALI_CHAT_WIDGET_INIT__) return;
+
+    // wait until widget + document.body are ready
+    if (!window.CaliChatWidget || !document.body) {
+      return setTimeout(initCaliChatWidget, 20);
+    }
+
+    window.__CALI_CHAT_WIDGET_INIT__ = true;
+
+    try {
+      window.CaliChatWidget.init({
+        botId: 'bbf342b4-832f-4793-93c3-23d1c91adf95',
+        apiBaseUrl: 'https://calibot-widget.onrender.com',
+        avatarSrc: 'https://calibrage.in/favicon.ico',
+        // primaryColor: '#3B82F6',
+        // botName: 'Demo Bot'
+      });
+    } catch (err) {
+      console.error('❌ CaliChatWidget initialization failed:', err);
+    }
+  })();
+</script> -->
+
+
+<!-- <script>
+  (function initCaliChatWidget() {
+    if (window.__CALI_CHAT_WIDGET_INIT__) return;
+    window.__CALI_CHAT_WIDGET_INIT__ = true;
+
+    // Create isolated iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = `
+      position: fixed !important;
+      bottom: 20px !important;
+      right: 20px !important;
+      width: 400px !important;
+      height: 600px !important;
+      border: none !important;
+      z-index: 2147483647 !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+      border-radius: 12px !important;
+    `;
+    
+    document.body.appendChild(iframe);
+
+    // Write widget code into iframe
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.jsdelivr.net/gh/Sai-Charan-Lankoji/calibot-widget@v0.0.8/dist/cali-chat-widget.umd.js"><\/script>
+      </head>
+      <body style="margin:0;padding:0;overflow:hidden;">
+        <script>
+          window.CaliChatWidget.init({
+            botId: 'bbf342b4-832f-4793-93c3-23d1c91adf95',
+            apiBaseUrl: 'https://calibot-widget.onrender.com',
+            avatarSrc: 'https://calibrage.in/favicon.ico',
+          });
+        <\/script>
+      </body>
+      </html>
+    `);
+    iframeDoc.close();
+  })();
+</script> -->
     
     <!-- <script src="https://cdn.botpress.cloud/webchat/v3.4/inject.js"></script>
 <script src="https://files.bpcontent.cloud/2025/11/21/10/20251121101200-C73F5Y88.js" defer></script> -->

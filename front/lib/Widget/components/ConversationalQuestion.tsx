@@ -93,7 +93,7 @@ export const ConversationalQuestion: React.FC<ConversationalQuestionProps> = ({
                         : "border-border bg-card text-card-foreground hover:border-primary/50 hover:bg-muted"
                     }
                     disabled:opacity-50 disabled:cursor-not-allowed
-                    focus:outline-none focus:ring-2 focus:ring-ring
+                    focus:outline-hidden focus:ring-2 focus:ring-ring
                   `}
                 >
                   <div className="flex items-center justify-between">

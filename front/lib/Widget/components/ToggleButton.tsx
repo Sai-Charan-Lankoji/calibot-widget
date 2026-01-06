@@ -18,7 +18,7 @@ export const ToggleButton: React.FC<ToggleButtonProps> = ({
     <button
       onClick={onClick}
       disabled={isLoading}
-      className="relative w-14 h-14 rounded-full bg-primary hover:bg-primary-hover text-primary-foreground shadow-xl hover:shadow-2xl transition-all duration-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      className="relative w-14 h-14 rounded-full bg-primary hover:bg-primary-hover text-primary-foreground shadow-xl hover:shadow-2xl transition-all duration-200 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
       aria-label="Open chat"
     >
       {/* Avatar or Icon */}

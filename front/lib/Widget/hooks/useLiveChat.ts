@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { WidgetApi } from '../utils/api';
-import { Conversation, Message } from '@/types';
+import { SessionManager, VisitorManager, ChatStorageManager } from '../utils/session';
+import { LiveChatMessage } from '@/types';
 
 interface UseLiveChatOptions {
   botId: string;
@@ -9,15 +10,25 @@ interface UseLiveChatOptions {
 }
 
 export function useLiveChat({ botId, apiBaseUrl, onError }: UseLiveChatOptions) {
-  const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<LiveChatMessage[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
 
   const apiRef = useRef(new WidgetApi(apiBaseUrl));
   const abortControllerRef = useRef<AbortController | null>(null);
   const pollIntervalRef = useRef<number | null>(null);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const existingSession = SessionManager.get();
+    if (existingSession) {
+      console.log('📂 Resuming existing session:', existingSession.sessionId);
+      setSessionId(existingSession.sessionId);
+      // Optionally load messages
+      loadMessages(existingSession.sessionId);
+    }
+  }, []);
 
   // Cleanup
   useEffect(() => {
@@ -29,7 +40,16 @@ export function useLiveChat({ botId, apiBaseUrl, onError }: UseLiveChatOptions) 
     };
   }, []);
 
-  const startConversation = useCallback(async (visitorInfo: {
+  const loadMessages = useCallback(async (sessionId: string) => {
+    try {
+      const response = await apiRef.current.getSessionMessages(sessionId);
+      setMessages(response.messages);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+    }
+  }, []);
+
+  const startSession = useCallback(async (visitorInfo: {
     name: string;
     email: string;
   }) => {
@@ -39,27 +59,34 @@ export function useLiveChat({ botId, apiBaseUrl, onError }: UseLiveChatOptions) 
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
 
-      const response = await apiRef.current.createConversation(
+      const visitorId = VisitorManager.getOrCreateVisitorId();
+
+      const response = await apiRef.current.startLiveChatSession(
         botId,
-        visitorInfo,
+        {
+          visitor_id: visitorId,
+          visitor_name: visitorInfo.name,
+          visitor_email: visitorInfo.email,
+          metadata: {
+            page_url: window.location.href,
+            referrer: document.referrer,
+            user_agent: navigator.userAgent
+          }
+        },
         abortControllerRef.current.signal
       );
 
-      setConversation(response.conversation);
-      setSessionToken(response.sessionToken);
+      // Store in sessionStorage
+      ChatStorageManager.initSession({
+        sessionId: response.session_id,
+        sessionToken: response.session_token,
+        botId: botId,
+        visitorInfo
+      });
 
-      // Store in localStorage
-      localStorage.setItem(
-        `cali_chat_${botId}`,
-        JSON.stringify({
-          conversationId: response.conversation.id,
-          sessionToken: response.sessionToken,
-          visitorInfo,
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-        })
-      );
-
+      setSessionId(response.session_id);
       setIsConnecting(false);
+      
       return response;
     } catch (error: any) {
       if (error.name === 'AbortError') return null;
@@ -71,28 +98,36 @@ export function useLiveChat({ botId, apiBaseUrl, onError }: UseLiveChatOptions) 
   }, [botId, onError]);
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!conversation || !sessionToken) {
-      throw new Error('No active conversation');
+    const currentSessionId = sessionId || SessionManager.getSessionId();
+    
+    if (!currentSessionId) {
+      throw new Error('No active session');
     }
 
     try {
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
 
-      const response = await apiRef.current.sendMessage(
-        conversation.id,
-        text,
-        sessionToken,
+      const response = await apiRef.current.sendSessionMessage(
+        currentSessionId,
+        {
+          content: text,
+          sender_type: 'VISITOR',
+          message_type: 'TEXT'
+        },
         abortControllerRef.current.signal
       );
 
       // Add messages to state
-      const newMessages: Message[] = [response.message];
-      if (response.botResponse) {
-        newMessages.push(response.botResponse);
+      const newMessages: LiveChatMessage[] = [response.message];
+      if (response.bot_response) {
+        newMessages.push(response.bot_response);
       }
 
       setMessages((prev) => [...prev, ...newMessages]);
+      
+      // Update activity timestamp
+      SessionManager.touchActivity();
 
       return response;
     } catch (error: any) {
@@ -101,30 +136,31 @@ export function useLiveChat({ botId, apiBaseUrl, onError }: UseLiveChatOptions) 
       onError?.(error);
       throw error;
     }
-  }, [conversation, sessionToken, onError]);
+  }, [sessionId, onError]);
 
   const startPolling = useCallback(() => {
-    if (!conversation || isPolling) return;
+    const currentSessionId = sessionId || SessionManager.getSessionId();
+    
+    if (!currentSessionId || isPolling) return;
 
     setIsPolling(true);
 
     pollIntervalRef.current = window.setInterval(async () => {
       try {
-        const response = await apiRef.current.getMessages(conversation.id);
-        const newMessages = response.messages.filter(
-          (msg) =>
-            !messages.some((m) => m.id === msg.id) &&
-            (msg.sender_type === 'AGENT' || msg.sender_type === 'BOT')
+        const lastMessage = messages[messages.length - 1];
+        const response = await apiRef.current.getSessionMessages(
+          currentSessionId,
+          lastMessage?.created_at
         );
 
-        if (newMessages.length > 0) {
-          setMessages((prev) => [...prev, ...newMessages]);
+        if (response.messages.length > 0) {
+          setMessages((prev) => [...prev, ...response.messages]);
         }
       } catch (error) {
         console.error('Polling error:', error);
       }
     }, 3000);
-  }, [conversation, messages, isPolling]);
+  }, [sessionId, messages, isPolling]);
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
@@ -134,32 +170,34 @@ export function useLiveChat({ botId, apiBaseUrl, onError }: UseLiveChatOptions) 
     }
   }, []);
 
-  const endConversation = useCallback(async () => {
-    if (!conversation || !sessionToken) return;
+  const endSession = useCallback(async () => {
+    const currentSessionId = sessionId || SessionManager.getSessionId();
+    
+    if (!currentSessionId) return;
 
     try {
-      await apiRef.current.endConversation(conversation.id, sessionToken);
-      setConversation(null);
-      setSessionToken(null);
+      await apiRef.current.endLiveChatSession(currentSessionId);
+      
+      ChatStorageManager.endSession(false); // Don't clear visitor ID
+      
+      setSessionId(null);
       setMessages([]);
       stopPolling();
-      localStorage.removeItem(`cali_chat_${botId}`);
     } catch (error: any) {
       onError?.(error);
       throw error;
     }
-  }, [conversation, sessionToken, botId, stopPolling, onError]);
+  }, [sessionId, stopPolling, onError]);
 
   return {
-    conversation,
-    sessionToken,
+    sessionId: sessionId || SessionManager.getSessionId(),
     messages,
     isConnecting,
     isPolling,
-    startConversation,
+    startSession,
     sendMessage,
     startPolling,
     stopPolling,
-    endConversation,
+    endSession,
   };
 }

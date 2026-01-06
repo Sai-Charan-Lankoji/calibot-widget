@@ -12,7 +12,7 @@
 //   const baseStyles = cn(
 //     "w-full px-4 py-3 rounded-xl border bg-background text-foreground",
 //     "text-sm placeholder:text-muted-foreground transition-all",
-//     "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+//     "focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
 //     error ? "border-destructive" : "border-border",
 //     icon && "pl-10",
 //     className,

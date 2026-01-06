@@ -1,0 +1,242 @@
+/* Theme variables for dynamic theming from API configuration */
+.cali-chat-widget {
+  /* Primary Colors */
+  --theme-primary: oklch(0.67 0.182 276.935);
+  --theme-primary-content: oklch(0.98 0 0);
+
+  /* Secondary Colors */
+  --theme-secondary: oklch(0.7 0.01 56.259);
+  --theme-secondary-content: oklch(0.14 0.004 49.25);
+
+  /* Accent */
+  --theme-accent: oklch(0.78 0.154 211.53);
+  --theme-accent-content: oklch(0.3 0.056 229.695);
+
+  /* Base Colors */
+  --theme-base-100: oklch(1 0 0);
+  --theme-base-200: oklch(0.96 0 0);
+  --theme-base-300: oklch(0.92 0 0);
+  --theme-base-content: oklch(0.14 0 0);
+
+  /* Neutral */
+  --theme-neutral: oklch(0.14 0 0);
+  --theme-neutral-content: oklch(0.98 0 0);
+
+  /* Semantic Colors */
+  --theme-success: oklch(0.72 0.219 149.579);
+  --theme-warning: oklch(0.76 0.188 70.08);
+  --theme-error: oklch(0.65 0.241 354.308);
+  --theme-info: oklch(0.71 0.143 215.221);
+
+  /* Typography */
+  --theme-font-family: Inter, system-ui, -apple-system, sans-serif;
+  --theme-font-size: 14px;
+  --theme-line-height: 1.5;
+  --theme-font-weight-normal: 400;
+  --theme-font-weight-medium: 500;
+  --theme-font-weight-bold: 600;
+
+  /* Layout */
+  --theme-border-radius: 1.5rem;
+  --theme-button-radius: 0.75rem;
+  --theme-input-radius: 0.75rem;
+  --theme-avatar-radius: 9999px;
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+/* Background Colors */
+.bg-theme-primary {
+  background-color: var(--theme-primary);
+}
+
+.bg-theme-secondary {
+  background-color: var(--theme-secondary);
+}
+
+.bg-theme-accent {
+  background-color: var(--theme-accent);
+}
+
+.bg-theme-neutral {
+  background-color: var(--theme-neutral);
+}
+
+.bg-theme-base-100 {
+  background-color: var(--theme-base-100);
+}
+
+.bg-theme-base-200 {
+  background-color: var(--theme-base-200);
+}
+
+.bg-theme-base-300 {
+  background-color: var(--theme-base-300);
+}
+
+.bg-theme-success {
+  background-color: var(--theme-success);
+}
+
+.bg-theme-warning {
+  background-color: var(--theme-warning);
+}
+
+.bg-theme-error {
+  background-color: var(--theme-error);
+}
+
+.bg-theme-info {
+  background-color: var(--theme-info);
+}
+
+/* Text Colors */
+.text-theme-primary {
+  color: var(--theme-primary);
+}
+
+.text-theme-primary-content {
+  color: var(--theme-primary-content);
+}
+
+.text-theme-secondary-content {
+  color: var(--theme-secondary-content);
+}
+
+.text-theme-base-content {
+  color: var(--theme-base-content);
+}
+
+.text-theme-neutral {
+  color: var(--theme-neutral);
+}
+
+.text-theme-neutral-content {
+  color: var(--theme-neutral-content);
+}
+
+.text-theme-accent {
+  color: var(--theme-accent);
+}
+
+/* Border Colors */
+.border-theme-base {
+  border-color: var(--theme-base-300);
+}
+
+.border-theme-primary {
+  border-color: var(--theme-primary);
+}
+
+.border-theme-secondary {
+  border-color: var(--theme-secondary);
+}
+
+.border-theme-accent {
+  border-color: var(--theme-accent);
+}
+
+/* Ring Colors (for focus states) */
+.ring-theme-primary {
+  --tw-ring-color: var(--theme-primary);
+}
+
+.focus\:ring-theme-primary:focus {
+  --tw-ring-color: var(--theme-primary);
+}
+
+/* ===== OPACITY VARIANTS (DaisyUI-style) ===== */
+
+/* Primary Opacity Variants */
+.bg-theme-primary\/5 {
+  background-color: color-mix(in srgb, var(--theme-primary) 5%, transparent);
+}
+
+.bg-theme-primary\/10 {
+  background-color: color-mix(in srgb, var(--theme-primary) 10%, transparent);
+}
+
+.bg-theme-primary\/20 {
+  background-color: color-mix(in srgb, var(--theme-primary) 20%, transparent);
+}
+
+.bg-theme-primary\/40 {
+  background-color: color-mix(in srgb, var(--theme-primary) 40%, transparent);
+}
+
+.bg-theme-primary\/90 {
+  background-color: color-mix(in srgb, var(--theme-primary) 90%, transparent);
+}
+
+/* Border Primary Opacity Variants */
+.border-theme-primary\/20 {
+  border-color: color-mix(in srgb, var(--theme-primary) 20%, transparent);
+}
+
+.border-theme-primary\/40 {
+  border-color: color-mix(in srgb, var(--theme-primary) 40%, transparent);
+}
+
+/* ===== HOVER STATES ===== */
+
+/* Hover Background */
+.hover\:bg-theme-primary\/5:hover {
+  background-color: color-mix(in srgb, var(--theme-primary) 5%, transparent);
+}
+
+.hover\:bg-theme-primary\/10:hover {
+  background-color: color-mix(in srgb, var(--theme-primary) 10%, transparent);
+}
+
+.hover\:bg-theme-base-200:hover {
+  background-color: var(--theme-base-200);
+}
+
+/* Hover Borders */
+.hover\:border-theme-primary\/40:hover {
+  border-color: color-mix(in srgb, var(--theme-primary) 40%, transparent);
+}
+
+/* Hover Text */
+.hover\:text-theme-primary:hover {
+  color: var(--theme-primary);
+}
+
+/* Hover Brightness (for primary/secondary buttons) */
+.hover\:brightness-110:hover {
+  filter: brightness(1.1);
+}
+
+.hover\:brightness-90:hover {
+  filter: brightness(0.9);
+}
+
+/* ===== GROUP HOVER VARIANTS ===== */
+
+.group:hover .group-hover\:text-theme-primary {
+  color: var(--theme-primary);
+}
+
+/* ===== ELEMENT STYLES ===== */
+
+/* Border Radius */
+.rounded-theme {
+  border-radius: var(--theme-border-radius);
+}
+
+.rounded-theme-button {
+  border-radius: var(--theme-button-radius);
+}
+
+.rounded-theme-input {
+  border-radius: var(--theme-input-radius);
+}
+
+.rounded-theme-avatar {
+  border-radius: var(--theme-avatar-radius);
+}
+
+/* Font Families */
+.font-theme {
+  font-family: var(--theme-font-family);
+}
