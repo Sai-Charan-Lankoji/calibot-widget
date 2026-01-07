@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback, useOptimistic, useTransition } from "react"
+import React, { useState, useEffect, useRef, useCallback, useOptimistic, useTransition, useMemo } from "react"
 import { X, Send } from "lucide-react"
 import type { Conversation, VisitorInfo, BotConfiguration } from "@/types"
 import { cn } from "../utils/cn"
@@ -26,7 +26,7 @@ type BubbleMessage = {
   agentName?: string
 }
 
-type ChatStep = "welcome" | "asking-name" | "asking-email" | "chatting"
+type ChatStep = "welcome" | "asking-name" | "asking-email" | "asking-phone" | "chatting"
 
 interface ChatInterfaceProps {
   botName: string
@@ -138,16 +138,83 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isTyping, setIsTyping] = useState(false)
   const [currentStep, setCurrentStep] = useState<ChatStep>("welcome")
   const [visitorInfo, setVisitorInfo] = useState<Partial<VisitorInfo>>({})
+  const [validationError, setValidationError] = useState<string | null>(null)
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [currentQuestion, setCurrentQuestion] = useState<any>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const timersRef = useRef<Set<number>>(new Set())
   const abortControllerRef = useRef<AbortController | null>(null)
+  const initialChatDataRef = useRef<any>(null)
+  const stateRestoredRef = useRef(false)
   const [isPending, startTransition] = useTransition()
   const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME)
 
+  const formConfig = useMemo(() => botConfig?.feature_forms || {
+    requireName: true,
+    requireEmail: true,
+    requirePhone: false,
+    gdprConsent: false,
+    privacyPolicyUrl: null,
+    collectInfoTiming: 'on-demand' as const
+  }, [botConfig])
+
+  const validateEmail = useCallback((email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }, [])
+
   const genId = useCallback(() => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, [])
+
+  // Restore chat state from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const savedState = sessionStorage.getItem(`cali_chat_state_${botId}`)
+      if (savedState) {
+        const state = JSON.parse(savedState)
+        
+        // Only restore if we have actual messages (not empty state)
+        if (state.messages && state.messages.length > 0) {
+          console.log('📂 Restoring chat state from sessionStorage:', state)
+          
+          // Mark that we restored state
+          stateRestoredRef.current = true
+          
+          // Restore all state
+          setMessages(state.messages)
+          if (state.currentStep) setCurrentStep(state.currentStep)
+          if (state.visitorInfo) setVisitorInfo(state.visitorInfo)
+          if (state.conversation) setConversation(state.conversation)
+          if (state.sessionToken) setSessionToken(state.sessionToken)
+          if (state.currentQuestion) setCurrentQuestion(state.currentQuestion)
+          if (state.initialChatData) initialChatDataRef.current = state.initialChatData
+        } else {
+          console.log('🗑️ Clearing empty sessionStorage state')
+          sessionStorage.removeItem(`cali_chat_state_${botId}`)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore chat state:', error)
+    }
+  }, [botId])
+
+  // Save chat state to sessionStorage whenever it changes
+  useEffect(() => {
+    try {
+      const stateToSave = {
+        messages,
+        currentStep,
+        visitorInfo,
+        conversation,
+        sessionToken,
+        currentQuestion,
+        initialChatData: initialChatDataRef.current
+      }
+      sessionStorage.setItem(`cali_chat_state_${botId}`, JSON.stringify(stateToSave))
+    } catch (error) {
+      console.error('Failed to save chat state:', error)
+    }
+  }, [messages, currentStep, visitorInfo, conversation, sessionToken, currentQuestion, botId])
 
   const scrollToBottom = useCallback(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -206,16 +273,135 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     [genId, addOptimisticMessage],
   )
 
-  const handleContactSupport = useCallback(() => {
-    addUserMessage("I want to contact support")
-    setCurrentStep("asking-name")
+  // Define handleCreateConversation early since it's used by multiple handlers
+  const handleCreateConversation = useCallback(async (fullVisitorInfo: VisitorInfo) => {
     setIsTyping(true)
 
-    setManagedTimeout(() => {
-      setIsTyping(false)
-      addBotMessage("I'd be happy to connect you with our team! First, what's your name?", "bot")
-    }, 600)
-  }, [addUserMessage, setManagedTimeout, addBotMessage])
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = new AbortController()
+
+    try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+      
+      // Include session ID if available
+      if (sessionToken) {
+        headers['x-session-id'] = sessionToken
+        console.log("📤 Sending session ID with conversation:", sessionToken)
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/conversations`, {
+        method: "POST",
+        headers,
+        signal: abortControllerRef.current.signal,
+        body: JSON.stringify({
+          botId,
+          visitor_info: fullVisitorInfo,
+          channel: "website",
+          attributes: {
+            current_page_url: window.location.href,
+            referrer_url: document.referrer,
+            user_agent: navigator.userAgent,
+          },
+        }),
+      })
+
+      if (!response.ok) throw new Error("Failed to start conversation")
+
+      const data = await response.json()
+
+      startTransition(() => {
+        setConversation(data.conversation)
+        setSessionToken(data.sessionToken)
+        setVisitorInfo(fullVisitorInfo)
+
+        localStorage.setItem(
+          `cali_chat_${botId}`,
+          JSON.stringify({
+            conversationId: data.conversation.id,
+            sessionToken: data.sessionToken,
+            visitorInfo: fullVisitorInfo,
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+          }),
+        )
+
+        setIsTyping(false)
+        setCurrentStep("chatting")
+        addBotMessage("Perfect! You're now connected. How can I help you?", "bot")
+      })
+    } catch (error: any) {
+      if (error.name === "AbortError") return
+      startTransition(() => {
+        setIsTyping(false)
+        addBotMessage("Sorry, something went wrong. Please try again.", "bot")
+      })
+    }
+  }, [apiBaseUrl, botId, addBotMessage, sessionToken])
+
+  // Helper to start collecting visitor information
+  const startInfoCollection = useCallback(() => {
+    // Check GDPR consent as master switch
+    if (!formConfig.gdprConsent) {
+      // GDPR consent is false - skip all data collection and start chat anonymously
+      handleCreateConversation({ name: "Anonymous", email: "no-email@example.com" })
+      return
+    }
+    
+    // GDPR consent is true - collect data based on requireX settings
+    if (formConfig.requireName) {
+      setCurrentStep("asking-name")
+      setIsTyping(true)
+
+      setManagedTimeout(() => {
+        setIsTyping(false)
+        addBotMessage("To get started, what's your name?", "bot")
+      }, 600)
+    } else if (formConfig.requireEmail) {
+      setCurrentStep("asking-email")
+      setIsTyping(true)
+
+      setManagedTimeout(() => {
+        setIsTyping(false)
+        addBotMessage("To get started, what's your email address?", "bot")
+      }, 600)
+    } else if (formConfig.requirePhone) {
+      setCurrentStep("asking-phone")
+      setIsTyping(true)
+
+      setManagedTimeout(() => {
+        setIsTyping(false)
+        addBotMessage("To get started, what's your phone number?", "bot")
+      }, 600)
+    } else {
+      // GDPR is true but no fields required
+      // For upfront: just store anonymous and continue to welcome
+      // For on-demand: create conversation
+      if (formConfig.collectInfoTiming === 'on-demand') {
+        handleCreateConversation({ name: "Anonymous", email: "no-email@example.com" })
+      }
+    }
+  }, [formConfig, setManagedTimeout, addBotMessage, handleCreateConversation])
+
+  const handleContactSupport = useCallback(() => {
+    addUserMessage("I want to contact support")
+    
+    // Check if we already have visitor info collected (upfront mode)
+    if (visitorInfo.name && formConfig.collectInfoTiming === 'upfront') {
+      // Info already collected, create conversation directly
+      const fullInfo: VisitorInfo = {
+        name: visitorInfo.name,
+        email: visitorInfo.email || "no-email@example.com"
+      }
+      if (visitorInfo.phone) {
+        fullInfo.phone = visitorInfo.phone
+      }
+      handleCreateConversation(fullInfo)
+    } else {
+      // Info not collected yet or on-demand mode, start collection
+      startInfoCollection()
+    }
+  }, [addUserMessage, visitorInfo, formConfig, startInfoCollection, handleCreateConversation])
 
   const handleOptionSelect = useCallback(
     async (option: string) => {
@@ -331,6 +517,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   useEffect(() => {
     const initializeChat = async () => {
+      // Skip initialization if we already have restored state
+      if (stateRestoredRef.current) {
+        console.log('✅ Chat state restored from sessionStorage, skipping initialization')
+        return
+      }
+      
       if (initializedRef.current) return
       initializedRef.current = true
 
@@ -349,6 +541,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const data = await response.json()
         console.log("✅ Chat initialized:", data)
 
+        // Store session ID from /start endpoint
+        if (data.session_id) {
+          setSessionToken(data.session_id)
+          console.log("💾 Stored session ID:", data.session_id)
+        }
+
+        // Store initial chat data for later use
+        initialChatDataRef.current = data
+
         const welcomeMsg: BubbleMessage = {
           id: genId(),
           type: "bot",
@@ -358,7 +559,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         setManagedTimeout(() => setMessages([welcomeMsg]), 200)
 
-        if (data.has_questions && data.next_question) {
+        // Check if we should collect info upfront
+        if (formConfig.collectInfoTiming === 'upfront') {
+          setManagedTimeout(() => {
+            startInfoCollection()
+          }, 500)
+        } else if (data.has_questions && data.next_question) {
           setCurrentQuestion(data.next_question)
 
           setManagedTimeout(() => {
@@ -393,9 +599,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         setManagedTimeout(() => {
           setMessages([welcomeMsg])
-          addBotMessage("", "action-buttons", {
-            actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
-          })
+          
+          // Check if we should collect info upfront
+          if (formConfig.collectInfoTiming === 'upfront') {
+            startInfoCollection()
+          } else {
+            addBotMessage("", "action-buttons", {
+              actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
+            })
+          }
         }, 200)
       }
     }
@@ -405,7 +617,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [])
 
   const handleNameSubmit = useCallback(() => {
-    if (!inputText.trim()) return
+    if (!inputText.trim()) {
+      setValidationError('Name is required')
+      return
+    }
 
     const name = inputText.trim()
 
@@ -413,86 +628,188 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setVisitorInfo((prev) => ({ ...prev, name }))
       addUserMessage(name)
       setInputText("")
-      setCurrentStep("asking-email")
-      setIsTyping(true)
+      setValidationError(null)
+      
+      // Determine next step based on config
+      if (formConfig.requireEmail) {
+        setCurrentStep("asking-email")
+        setIsTyping(true)
 
-      setManagedTimeout(() => {
-        setIsTyping(false)
-        addBotMessage(`Nice to meet you, ${name}! What's your email address?`, "bot")
-      }, 600)
+        setManagedTimeout(() => {
+          setIsTyping(false)
+          addBotMessage(`Nice to meet you, ${name}! What's your email address?`, "bot")
+        }, 600)
+      } else if (formConfig.requirePhone) {
+        setCurrentStep("asking-phone")
+        setIsTyping(true)
+
+        setManagedTimeout(() => {
+          setIsTyping(false)
+          addBotMessage(`Nice to meet you, ${name}! What's your phone number?`, "bot")
+        }, 600)
+      } else {
+        // No more fields to collect
+        if (formConfig.collectInfoTiming === 'upfront') {
+          // Store info and return to welcome/FAQs
+          setCurrentStep("welcome")
+          setIsTyping(true)
+          setManagedTimeout(() => {
+            setIsTyping(false)
+            addBotMessage("Great! How can I help you today?", "bot")
+            
+            // Show questions or contact button
+            setManagedTimeout(() => {
+              const chatData = initialChatDataRef.current
+              if (chatData?.has_questions && chatData.next_question) {
+                setCurrentQuestion(chatData.next_question)
+                const questionMsg: BubbleMessage = {
+                  id: genId(),
+                  type: "conversational-question",
+                  content: "",
+                  question: chatData.next_question.question,
+                  options: chatData.next_question.options || [],
+                  currentRank: chatData.next_question.rank,
+                  timestamp: new Date().toISOString(),
+                }
+                setMessages((prev) => [...prev, questionMsg])
+              } else {
+                addBotMessage("", "action-buttons", {
+                  actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
+                })
+              }
+            }, 500)
+          }, 600)
+        } else {
+          // On-demand: create conversation immediately
+          handleCreateConversation({ name, email: "no-email@example.com" })
+        }
+      }
     })
-  }, [inputText, addUserMessage, setManagedTimeout, addBotMessage])
+  }, [inputText, addUserMessage, setManagedTimeout, addBotMessage, formConfig, handleCreateConversation, genId, handleContactSupport])
 
-  const handleEmailSubmit = useCallback(async () => {
-    if (!inputText.trim()) return
+  const handleEmailSubmit = useCallback(() => {
+    if (!inputText.trim()) {
+      setValidationError('Email is required')
+      return
+    }
 
     const email = inputText.trim()
-    const fullVisitorInfo: VisitorInfo = { name: visitorInfo.name!, email }
-
-    const optimisticMsg: BubbleMessage = {
-      id: genId(),
-      type: "user",
-      content: email,
-      timestamp: new Date().toISOString(),
+    
+    if (!validateEmail(email)) {
+      setValidationError('Please enter a valid email address')
+      return
     }
 
-    addOptimisticMessage(optimisticMsg)
-    setInputText("")
-    setIsTyping(true)
+    startTransition(() => {
+      setVisitorInfo((prev) => ({ ...prev, email }))
+      addUserMessage(email)
+      setInputText("")
+      setValidationError(null)
 
-    abortControllerRef.current?.abort()
-    abortControllerRef.current = new AbortController()
+      // Determine next step
+      if (formConfig.requirePhone) {
+        setCurrentStep("asking-phone")
+        setIsTyping(true)
 
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/conversations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortControllerRef.current.signal,
-        body: JSON.stringify({
-          botId,
-          visitor_info: fullVisitorInfo,
-          channel: "website",
-          attributes: {
-            current_page_url: window.location.href,
-            referrer_url: document.referrer,
-            user_agent: navigator.userAgent,
-          },
-        }),
-      })
+        setManagedTimeout(() => {
+          setIsTyping(false)
+          addBotMessage("Great! And what's your phone number?", "bot")
+        }, 600)
+      } else {
+        // No more fields to collect
+        if (formConfig.collectInfoTiming === 'upfront') {
+          // Store info and return to welcome/FAQs
+          setCurrentStep("welcome")
+          setIsTyping(true)
+          setManagedTimeout(() => {
+            setIsTyping(false)
+            addBotMessage("Perfect! How can I help you today?", "bot")
+            
+            // Show questions or contact button
+            setManagedTimeout(() => {
+              const chatData = initialChatDataRef.current
+              if (chatData?.has_questions && chatData.next_question) {
+                setCurrentQuestion(chatData.next_question)
+                const questionMsg: BubbleMessage = {
+                  id: genId(),
+                  type: "conversational-question",
+                  content: "",
+                  question: chatData.next_question.question,
+                  options: chatData.next_question.options || [],
+                  currentRank: chatData.next_question.rank,
+                  timestamp: new Date().toISOString(),
+                }
+                setMessages((prev) => [...prev, questionMsg])
+              } else {
+                addBotMessage("", "action-buttons", {
+                  actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
+                })
+              }
+            }, 500)
+          }, 600)
+        } else {
+          // On-demand: create conversation with name and email
+          handleCreateConversation({ name: visitorInfo.name!, email: email })
+        }
+      }
+    })
+  }, [inputText, visitorInfo.name, addUserMessage, setManagedTimeout, addBotMessage, formConfig, validateEmail, handleCreateConversation, genId, handleContactSupport])
 
-      if (!response.ok) throw new Error("Failed to start conversation")
-
-      const data = await response.json()
-
-      startTransition(() => {
-        setMessages((prev) => [...prev, optimisticMsg])
-        setConversation(data.conversation)
-        setSessionToken(data.sessionToken)
-        setVisitorInfo(fullVisitorInfo)
-
-        localStorage.setItem(
-          `cali_chat_${botId}`,
-          JSON.stringify({
-            conversationId: data.conversation.id,
-            sessionToken: data.sessionToken,
-            visitorInfo: fullVisitorInfo,
-            expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-          }),
-        )
-
-        setIsTyping(false)
-        setCurrentStep("chatting")
-        addBotMessage("Perfect! You're now connected. How can I help you?", "bot")
-      })
-    } catch (error: any) {
-      if (error.name === "AbortError") return
-      startTransition(() => {
-        setMessages((prev) => [...prev, optimisticMsg])
-        setIsTyping(false)
-        addBotMessage("Sorry, something went wrong. Please try again.", "bot")
-      })
+  const handlePhoneSubmit = useCallback(() => {
+    if (!inputText.trim()) {
+      setValidationError('Phone number is required')
+      return
     }
-  }, [inputText, visitorInfo, genId, addOptimisticMessage, apiBaseUrl, botId, addBotMessage])
+
+    const phone = inputText.trim()
+
+    startTransition(() => {
+      setVisitorInfo((prev) => ({ ...prev, phone }))
+      addUserMessage(phone)
+      setInputText("")
+      setValidationError(null)
+
+      if (formConfig.collectInfoTiming === 'upfront') {
+        // Store info and return to welcome/FAQs
+        setCurrentStep("welcome")
+        setIsTyping(true)
+        setManagedTimeout(() => {
+          setIsTyping(false)
+          addBotMessage("All set! How can I assist you today?", "bot")
+          
+          // Show questions or contact button
+          setManagedTimeout(() => {
+            const chatData = initialChatDataRef.current
+            if (chatData?.has_questions && chatData.next_question) {
+              setCurrentQuestion(chatData.next_question)
+              const questionMsg: BubbleMessage = {
+                id: genId(),
+                type: "conversational-question",
+                content: "",
+                question: chatData.next_question.question,
+                options: chatData.next_question.options || [],
+                currentRank: chatData.next_question.rank,
+                timestamp: new Date().toISOString(),
+              }
+              setMessages((prev) => [...prev, questionMsg])
+            } else {
+              addBotMessage("", "action-buttons", {
+                actions: [{ label: "💬 Contact Support", onClick: handleContactSupport }],
+              })
+            }
+          }, 500)
+        }, 600)
+      } else {
+        // On-demand: create conversation with all collected info
+        const fullInfo: VisitorInfo = { 
+          name: visitorInfo.name!, 
+          email: visitorInfo.email || "no-email@example.com",
+          phone: phone
+        }
+        handleCreateConversation(fullInfo)
+      }
+    })
+  }, [inputText, visitorInfo, addUserMessage, setManagedTimeout, addBotMessage, formConfig, handleCreateConversation, genId, handleContactSupport])
 
   const handleChatMessage = useCallback(async () => {
     if (!inputText.trim() || !conversation || !sessionToken) return
@@ -596,11 +913,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       case "asking-email":
         handleEmailSubmit()
         break
+      case "asking-phone":
+        handlePhoneSubmit()
+        break
       case "chatting":
         handleChatMessage()
         break
     }
-  }, [currentStep, handleNameSubmit, handleEmailSubmit, handleChatMessage])
+  }, [currentStep, handleNameSubmit, handleEmailSubmit, handlePhoneSubmit, handleChatMessage])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -615,10 +935,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setTheme(extractedTheme)
 
       if (containerRef.current) {
-        applyThemeToElement(containerRef.current, extractedTheme)
+        applyThemeToElement(containerRef.current, extractedTheme, featureUI?.darkMode)
       }
     }
-  }, [botConfig])
+  }, [botConfig, featureUI?.darkMode])
 
   return (
     <div
@@ -688,14 +1008,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <input
               type="text"
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                setInputText(e.target.value)
+                if (validationError) setValidationError(null)
+              }}
               onKeyDown={handleKeyDown}
               placeholder={
                 currentStep === "asking-name"
                   ? "Enter your name..."
                   : currentStep === "asking-email"
                     ? "Enter your email..."
-                    : "Type your message..."
+                    : currentStep === "asking-phone"
+                      ? "Enter your phone number..."
+                      : "Type your message..."
               }
               className="flex-1 px-4 py-2 rounded-lg bg-theme-base-200 border border-theme-base focus:outline-none focus:ring-2 focus:ring-theme-primary text-theme-base-content placeholder:text-theme-neutral disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isTyping || isPending}
@@ -708,6 +1033,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <Send className="w-4 h-4" />
             </Button>
           </div>
+          {validationError && (
+            <p className="text-xs text-error mt-2">{validationError}</p>
+          )}
         </div>
       )}
     </div>

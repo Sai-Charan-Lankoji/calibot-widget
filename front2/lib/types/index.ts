@@ -83,6 +83,7 @@ export interface FeatureForms {
   requirePhone: boolean;
   gdprConsent: boolean;
   privacyPolicyUrl: string | null;
+  collectInfoTiming: 'upfront' | 'on-demand';
 }
 
 // Updated Bot Configuration
@@ -110,7 +111,8 @@ export interface BotConfiguration {
 // Keep existing types for backward compatibility
 export type VisitorInfo = {
   name: string;
-  email: string;
+  email?: string;
+  phone?: string;
 };
 
 export interface FAQ {

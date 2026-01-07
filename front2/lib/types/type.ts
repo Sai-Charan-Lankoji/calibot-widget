@@ -6,7 +6,8 @@ export interface FAQ {
 
 export interface VisitorInfo {
   name: string
-  email: string
+  email?: string
+  phone?: string
 }
 
 export interface Conversation {
@@ -61,6 +62,7 @@ export interface BotConfiguration {
     requireEmail: boolean
     requirePhone: boolean
     privacyPolicyUrl: string | null
+    collectInfoTiming: 'upfront' | 'on-demand'
   }
 }
 

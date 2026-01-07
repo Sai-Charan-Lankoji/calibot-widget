@@ -35,7 +35,7 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
       // Apply theme immediately
       if (widgetRef.current) {
         const theme = extractThemeFromBot(initialConfig)
-        applyThemeToElement(widgetRef.current, theme)
+        applyThemeToElement(widgetRef.current, theme, initialConfig.feature_ui?.darkMode)
       }
     }
   }, [initialConfig])
@@ -57,7 +57,7 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
         // Apply theme to widget container
         if (widgetRef.current) {
           const theme = extractThemeFromBot(config)
-          applyThemeToElement(widgetRef.current, theme)
+          applyThemeToElement(widgetRef.current, theme, config.feature_ui?.darkMode)
         }
 
         setError(null)
@@ -171,6 +171,7 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
             requireEmail: true,
             requirePhone: false,
             privacyPolicyUrl: null,
+            collectInfoTiming: 'on-demand',
           },
         })
       } finally {

@@ -80,26 +80,47 @@ export function extractThemeFromBot(bot: any): ThemeConfig {
   }
 }
 
-export function applyThemeToElement(element: HTMLElement, theme: ThemeConfig) {
+export function applyThemeToElement(element: HTMLElement, theme: ThemeConfig, darkMode = false) {
   if (!element) return
 
-  // Apply colors
-  element.style.setProperty("--theme-primary", theme.colors.primary)
-  element.style.setProperty("--theme-primary-content", theme.colors.primaryContent)
-  element.style.setProperty("--theme-secondary", theme.colors.secondary)
-  element.style.setProperty("--theme-secondary-content", theme.colors.secondaryContent)
-  element.style.setProperty("--theme-accent", theme.colors.accent)
-  element.style.setProperty("--theme-accent-content", theme.colors.accentContent)
-  element.style.setProperty("--theme-base-100", theme.colors.base100)
-  element.style.setProperty("--theme-base-200", theme.colors.base200)
-  element.style.setProperty("--theme-base-300", theme.colors.base300)
-  element.style.setProperty("--theme-base-content", theme.colors.baseContent)
-  element.style.setProperty("--theme-neutral", theme.colors.neutral)
-  element.style.setProperty("--theme-neutral-content", theme.colors.neutralContent)
-  element.style.setProperty("--theme-success", theme.colors.success)
-  element.style.setProperty("--theme-warning", theme.colors.warning)
-  element.style.setProperty("--theme-error", theme.colors.error)
-  element.style.setProperty("--theme-info", theme.colors.info)
+  // Define dark mode color overrides - only override base/neutral colors, keep brand colors
+  const darkColors = darkMode ? {
+    // Keep brand colors from theme config (primary, secondary, accent)
+    primary: theme.colors.primary,
+    primaryContent: theme.colors.primaryContent,
+    secondary: theme.colors.secondary,
+    secondaryContent: theme.colors.secondaryContent,
+    accent: theme.colors.accent,
+    accentContent: theme.colors.accentContent,
+    
+    // Override only base colors for dark backgrounds
+    base100: "oklch(0.18 0 0)",
+    base200: "oklch(0.22 0 0)",
+    base300: "oklch(0.28 0 0)",
+    baseContent: "oklch(0.95 0 0)",
+    
+    // Override neutral colors for dark mode
+    neutral: "oklch(0.85 0 0)",
+    neutralContent: "oklch(0.15 0 0)",
+    
+    // Keep success color from theme
+    success: theme.colors.success,
+  } : theme.colors
+
+  // Apply colors (use dark mode colors if enabled)
+  element.style.setProperty("--theme-primary", darkColors.primary)
+  element.style.setProperty("--theme-primary-content", darkColors.primaryContent)
+  element.style.setProperty("--theme-secondary", darkColors.secondary)
+  element.style.setProperty("--theme-secondary-content", darkColors.secondaryContent)
+  element.style.setProperty("--theme-accent", darkColors.accent)
+  element.style.setProperty("--theme-accent-content", darkColors.accentContent)
+  element.style.setProperty("--theme-base-100", darkColors.base100)
+  element.style.setProperty("--theme-base-200", darkColors.base200)
+  element.style.setProperty("--theme-base-300", darkColors.base300)
+  element.style.setProperty("--theme-base-content", darkColors.baseContent)
+  element.style.setProperty("--theme-neutral", darkColors.neutral)
+  element.style.setProperty("--theme-neutral-content", darkColors.neutralContent)
+  element.style.setProperty("--theme-success", darkColors.success)
 
   // Apply typography
   element.style.setProperty("--theme-font-family", theme.typography.fontFamily as string)
@@ -115,3 +136,4 @@ export function applyThemeToElement(element: HTMLElement, theme: ThemeConfig) {
   element.style.setProperty("--theme-input-radius", theme.layout.inputRadius as string)
   element.style.setProperty("--theme-avatar-radius", theme.layout.avatarRadius as string)
 }
+
