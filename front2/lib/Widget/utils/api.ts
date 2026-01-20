@@ -1,10 +1,10 @@
-import { 
-  InitResponse, 
-  ConversationResponse, 
-  MessageResponse, 
+import {
+  //InitResponse,
+  ConversationResponse,
+  MessageResponse,
   Message,
-  Conversation
-} from '@/types';
+  Conversation,
+} from "@/types";
 
 export class ApiError extends Error {
   constructor(
@@ -14,7 +14,7 @@ export class ApiError extends Error {
     public details?: any
   ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     Object.setPrototypeOf(this, ApiError.prototype);
   }
 }
@@ -36,7 +36,7 @@ export class WidgetApi {
   private retryConfig: RetryConfig;
 
   constructor(baseUrl: string, retryConfig?: Partial<RetryConfig>) {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.baseUrl = baseUrl.replace(/\/$/, "");
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   }
 
@@ -64,7 +64,7 @@ export class WidgetApi {
           ...options,
           signal: combinedSignal,
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             ...options.headers,
           },
         });
@@ -72,12 +72,12 @@ export class WidgetApi {
         clearTimeout(timeoutId);
 
         // Handle non-JSON responses
-        const contentType = response.headers.get('content-type');
-        if (!contentType?.includes('application/json')) {
+        const contentType = response.headers.get("content-type");
+        if (!contentType?.includes("application/json")) {
           throw new ApiError(
-            'Invalid response format',
+            "Invalid response format",
             response.status,
-            'INVALID_RESPONSE'
+            "INVALID_RESPONSE"
           );
         }
 
@@ -97,7 +97,7 @@ export class WidgetApi {
 
         if (!response.ok) {
           throw new ApiError(
-            data.message || data.error || 'Request failed',
+            data.message || data.error || "Request failed",
             response.status,
             data.code,
             data.details
@@ -109,7 +109,7 @@ export class WidgetApi {
         lastError = error as Error;
 
         // Don't retry if aborted
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof Error && error.name === "AbortError") {
           throw error;
         }
 
@@ -135,16 +135,52 @@ export class WidgetApi {
     }
 
     throw new ApiError(
-      lastError?.message || 'Request failed after retries',
+      lastError?.message || "Request failed after retries",
       undefined,
-      'NETWORK_ERROR'
+      "NETWORK_ERROR"
     );
   }
 
   /**
-   * Start conversational chat session
+   * Initialize or resume chat session
    */
-  async startChat(botId: string, signal?: AbortSignal): Promise<{
+  async initSession(
+    botId: string,
+    sessionToken?: string,
+    visitorId?: string,
+    visitorInfo?: { name?: string; email?: string },
+    signal?: AbortSignal
+  ): Promise<{
+    success: boolean;
+    session_id: string;
+    session_token: string;
+    visitor_id: string;
+    status: string;
+    resumed: boolean;
+  }> {
+    return this.fetch(
+      `/api/widget/${botId}/init`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sessionToken,
+          visitorId,
+          visitorInfo,
+        }),
+      },
+      signal
+    );
+  }
+
+  /**
+   * Start conversational chat session (now requires session credentials)
+   */
+  async startChat(
+    botId: string,
+    sessionId: string,
+    sessionToken: string,
+    signal?: AbortSignal
+  ): Promise<{
     session_id: string;
     greeting: string;
     company_name: string;
@@ -159,18 +195,26 @@ export class WidgetApi {
   }> {
     return this.fetch(
       `/api/chat/${botId}/start`,
-      { method: 'POST' },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: sessionId,
+          session_token: sessionToken,
+        }),
+      },
       signal
     );
   }
 
   /**
-   * Send message in conversational chat
+   * Send message in conversational chat (now includes session credentials)
    */
   async sendChatMessage(
     botId: string,
     selectedOption: string,
-    currentRank: number,
+    currentFaqId: string,
+    sessionId: string,
+    sessionToken: string,
     signal?: AbortSignal
   ): Promise<{
     acknowledged?: string;
@@ -184,20 +228,16 @@ export class WidgetApi {
     message?: string;
     transfer_to_human?: boolean;
     error?: string;
-    repeat_question?: {
-      id: string;
-      rank: number;
-      question: string;
-      options: string[];
-    };
   }> {
     return this.fetch(
       `/api/chat/${botId}/message`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({
           selected_option: selectedOption,
-          current_rank: currentRank,
+          current_faq_id: currentFaqId,
+          session_id: sessionId,
+          session_token: sessionToken,
         }),
       },
       signal
@@ -208,7 +248,10 @@ export class WidgetApi {
    * Get bot configuration (theme + features)
    * This is the ONLY initial API call
    */
-  async getBotTheme(botId: string, signal?: AbortSignal): Promise<{
+  async getBotTheme(
+    botId: string,
+    signal?: AbortSignal
+  ): Promise<{
     bot: {
       id: string;
       name: string;
@@ -225,7 +268,7 @@ export class WidgetApi {
     };
   }> {
     // Use the correct endpoint that exists in your backend
-    return this.fetch(`/api/widget/init/${botId}`, { method: 'GET' }, signal);
+    return this.fetch(`/api/widget/init/${botId}`, { method: "GET" , headers: { "ngrok-skip-browser-warning": "true" } }, signal);
   }
 
   /**
@@ -237,13 +280,13 @@ export class WidgetApi {
     signal?: AbortSignal
   ): Promise<ConversationResponse> {
     return this.fetch(
-      '/api/conversations',
+      "/api/conversations",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({
           botId,
           visitor_info: visitorInfo,
-          channel: 'WEB_WIDGET',
+          channel: "WEB_WIDGET",
           attributes: {
             current_page_url: window.location.href,
             referrer_url: document.referrer,
@@ -267,13 +310,13 @@ export class WidgetApi {
     return this.fetch(
       `/api/conversations/${conversationId}/messages`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${sessionToken}`,
         },
         body: JSON.stringify({
           content: { text },
-          sender_type: 'VISITOR',
+          sender_type: "VISITOR",
         }),
       },
       signal
@@ -289,7 +332,7 @@ export class WidgetApi {
   ): Promise<{ messages: Message[] }> {
     return this.fetch(
       `/api/conversations/${conversationId}/messages`,
-      { method: 'GET' },
+      { method: "GET" },
       signal
     );
   }
@@ -305,7 +348,7 @@ export class WidgetApi {
     return this.fetch(
       `/api/conversations/${conversationId}/end`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ sessionToken }),
       },
       signal

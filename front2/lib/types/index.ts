@@ -157,11 +157,16 @@ export interface Conversation {
 }
 
 export interface ChatSession {
+  sessionId: string;
   sessionToken: string;
-  conversationId: string;
-  visitorInfo: {
-    name: string;
-    email: string;
+  botId?: string;
+  visitorId?: string;
+  status?: 'ACTIVE' | 'WAITING_FOR_AGENT' | 'ASSIGNED' | 'CLOSED';
+  conversationId?: string;
+  visitorInfo?: {
+    name?: string;
+    email?: string;
+    phone?: string;
   };
   createdAt: string;
 }

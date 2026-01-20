@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { WidgetApi } from '../utils/api';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { WidgetApi } from "../utils/api";
+import { SessionManager } from "../utils/session";
 
 interface ChatQuestion {
   id: string;
-  rank: number;
   question: string;
   options: string[] | null;
 }
@@ -15,29 +15,81 @@ interface UseChatOptions {
 }
 
 export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
-  const [currentQuestion, setCurrentQuestion] = useState<ChatQuestion | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<ChatQuestion | null>(
+    null
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [conversationEnded, setConversationEnded] = useState(false);
-  
+  const [sessionInitialized, setSessionInitialized] = useState(false);
+
   const apiRef = useRef(new WidgetApi(apiBaseUrl));
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Cleanup on unmount
+  // Initialize session on mount
   useEffect(() => {
+    initializeSession();
+
     return () => {
       abortControllerRef.current?.abort();
     };
-  }, []);
+  }, [botId]);
+
+  const initializeSession = async () => {
+    try {
+      setIsLoading(true);
+
+      // Check for existing session
+      const existingSession = SessionManager.get();
+
+      const response = await apiRef.current.initSession(
+        botId,
+        existingSession?.sessionToken,
+        existingSession?.visitorId
+      );
+
+      // Save session
+      SessionManager.set({
+        sessionId: response.session_id,
+        sessionToken: response.session_token,
+        botId: botId,
+        visitorId: response.visitor_id,
+        status: response.status as any,
+        createdAt: new Date().toISOString(),
+      });
+
+      setSessionInitialized(true);
+      console.log(
+        `✅ Session ${response.resumed ? "resumed" : "created"}:`,
+        response.session_id
+      );
+    } catch (error: any) {
+      console.error("Failed to initialize session:", error);
+      onError?.(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const startChat = useCallback(async () => {
+    if (!sessionInitialized) {
+      await initializeSession();
+    }
+
+    const session = SessionManager.get();
+    if (!session) {
+      throw new Error("No active session");
+    }
+
     setIsLoading(true);
-    
+
     try {
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
 
       const response = await apiRef.current.startChat(
         botId,
+        session.sessionId,
+        session.sessionToken,
         abortControllerRef.current.signal
       );
 
@@ -48,90 +100,106 @@ export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
       setIsLoading(false);
       return response;
     } catch (error: any) {
-      if (error.name === 'AbortError') return null;
-      
+      if (error.name === "AbortError") return null;
+
       setIsLoading(false);
       onError?.(error);
       throw error;
     }
-  }, [botId, onError]);
+  }, [botId, sessionInitialized, onError]);
 
-  const sendMessage = useCallback(async (
-    selectedOption: string
-  ): Promise<{
-    acknowledged?: string;
-    nextQuestion?: ChatQuestion | null;
-    ended?: boolean;
-    endMessage?: string;
-  }> => {
-    if (!currentQuestion) {
-      throw new Error('No current question');
-    }
-
-    setIsLoading(true);
-
-    try {
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = new AbortController();
-
-      const response = await apiRef.current.sendChatMessage(
-        botId,
-        selectedOption,
-        currentQuestion.rank,
-        abortControllerRef.current.signal
-      );
-
-      setIsLoading(false);
-
-      // Handle end of conversation
-      if (response.end) {
-        setConversationEnded(true);
-        setCurrentQuestion(null);
-        return {
-          acknowledged: response.acknowledged,
-          ended: true,
-          endMessage: response.message,
-        };
+  const sendMessage = useCallback(
+    async (
+      selectedOption: string
+    ): Promise<{
+      acknowledged?: string;
+      nextQuestion?: ChatQuestion | null;
+      ended?: boolean;
+      endMessage?: string;
+      shouldTransferToHuman?: boolean;
+    }> => {
+      if (!currentQuestion) {
+        throw new Error("No current question");
       }
 
-      // Handle next question
-      if (response.next_question) {
-        setCurrentQuestion(response.next_question);
-        return {
-          acknowledged: response.acknowledged,
-          nextQuestion: response.next_question,
-          ended: false,
-        };
+      const session = SessionManager.get();
+      if (!session) {
+        throw new Error("No active session");
       }
 
-      // Handle error (invalid option)
-      if (response.error) {
+      setIsLoading(true);
+
+      try {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = new AbortController();
+
+        const response = await apiRef.current.sendChatMessage(
+          botId,
+          selectedOption,
+          currentQuestion.id,
+          session.sessionId,
+          session.sessionToken,
+          abortControllerRef.current.signal
+        );
+
         setIsLoading(false);
-        throw new Error(response.error);
-      }
 
-      return { acknowledged: response.acknowledged };
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        return {};
+        // Handle end of conversation
+        if (response.end) {
+          setConversationEnded(true);
+          setCurrentQuestion(null);
+          return {
+            acknowledged: response.acknowledged,
+            ended: true,
+            endMessage: response.message,
+            shouldTransferToHuman: response.transfer_to_human, // ✅ ADD THIS
+          };
+        }
+
+        // Handle next question
+        if (response.next_question) {
+          setCurrentQuestion(response.next_question);
+          return {
+            acknowledged: response.acknowledged,
+            nextQuestion: response.next_question,
+            ended: false,
+          };
+        }
+
+        // Handle error
+        if (response.error) {
+          setIsLoading(false);
+          throw new Error(response.error);
+        }
+
+        return { acknowledged: response.acknowledged };
+      } catch (error: any) {
+        if (error.name === "AbortError") {
+          return {};
+        }
+
+        setIsLoading(false);
+        onError?.(error);
+        throw error;
       }
-      
-      setIsLoading(false);
-      onError?.(error);
-      throw error;
-    }
-  }, [botId, currentQuestion, onError]);
+    },
+    [botId, currentQuestion, onError]
+  );
 
   const resetChat = useCallback(() => {
     setCurrentQuestion(null);
     setConversationEnded(false);
     setIsLoading(false);
+    SessionManager.clear();
+    setSessionInitialized(false);
+    initializeSession();
   }, []);
 
   return {
     currentQuestion,
     isLoading,
     conversationEnded,
+    sessionInitialized,
     startChat,
     sendMessage,
     resetChat,

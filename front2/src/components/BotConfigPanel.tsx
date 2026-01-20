@@ -83,7 +83,7 @@ export default function BotConfigPanel({ botId, apiBaseUrl, onConfigChange }: Bo
   const loadConfig = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch(`${apiBaseUrl}/api/widget/init/${botId}`)
+      const response = await fetch(`${apiBaseUrl}/api/widget/init/${botId}`, { headers: { "ngrok-skip-browser-warning": "true" } })
       if (!response.ok) throw new Error('Failed to load config')
       const data = await response.json()
       setConfig(data.bot)

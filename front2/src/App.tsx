@@ -6,7 +6,7 @@ import type { BotConfiguration } from "../lib/types"
 
 function App() {
   const [botId] = useState("bbf342b4-832f-4793-93c3-23d1c91adf95")
-  const [apiBaseUrl] = useState("http://localhost:3001")
+  const [apiBaseUrl] = useState("https://yanira-diacidic-tommie.ngrok-free.app")
   const [showWidget, setShowWidget] = useState(true)
   const [currentConfig, setCurrentConfig] = useState<BotConfiguration | null>(null)
 
