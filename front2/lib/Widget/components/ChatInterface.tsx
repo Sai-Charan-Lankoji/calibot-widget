@@ -24,6 +24,7 @@ import {
   DEFAULT_THEME,
 } from "../utils/theme-manager";
 import { SessionManager } from "../utils/session";
+import socketService from "@/Widget/services/socketService";
 // import "../theme-variables.css"
 
 import "../globals.css";
@@ -97,22 +98,46 @@ const BotMessage = React.memo<{
 ));
 BotMessage.displayName = "BotMessage";
 
-const AgentMessage = React.memo<{ content: string; agentName?: string }>(
-  ({ content, agentName }) => (
-    <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="w-8 h-8 rounded-full bg-theme-accent text-theme-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-theme-base-100 shadow-md">
-        {agentName?.charAt(0) || "A"}
+const AgentMessage = React.memo<{ content: string; agentName?: string; timestamp?: string }>(
+  ({ content, agentName, timestamp }) => {
+    const formatTime = (dateString?: string) => {
+      if (!dateString) return '';
+      try {
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        });
+      } catch {
+        return '';
+      }
+    };
+
+    return (
+      <div className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="w-8 h-8 rounded-full bg-theme-accent text-theme-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-theme-base-100 shadow-md">
+          {agentName?.charAt(0) || "A"}
+        </div>
+        <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-accent">
+          <p className="text-xs font-semibold text-theme-accent mb-1">
+            {agentName || "Support Agent"}
+          </p>
+          <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">
+            {content}
+          </p>
+          {timestamp && (
+            <p className="text-xs text-theme-neutral mt-1 opacity-70">
+              {formatTime(timestamp)}
+            </p>
+          )}
+        </div>
       </div>
-      <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-accent">
-        <p className="text-xs font-semibold text-theme-accent mb-1">
-          {agentName || "Support Agent"}
-        </p>
-        <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">
-          {content}
-        </p>
-      </div>
-    </div>
-  )
+    );
+  }
 );
 AgentMessage.displayName = "AgentMessage";
 
@@ -215,6 +240,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isPending, startTransition] = useTransition();
   const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME);
   const [chatMode, setChatMode] = useState<'faq' | 'live-chat'>('faq');
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const [socketConnecting, setSocketConnecting] = useState(false);
 
   const formConfig = useMemo(
     () =>
@@ -309,13 +336,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     scrollToBottom();
   }, [optimisticMessages, scrollToBottom]);
 
-  const setManagedTimeout = useCallback((fn: () => void, delay: number) => {
-    const timer = window.setTimeout(() => {
-      fn();
-      timersRef.current.delete(timer);
+  const setManagedTimeout = useCallback((callback: () => void, delay: number) => {
+    const id = window.setTimeout(() => {
+      timersRef.current.delete(id);
+      callback();
     }, delay);
-    timersRef.current.add(timer);
-    return timer;
+    timersRef.current.add(id);
+    return id;
+  }, []);
+
+  const clearManagedTimeout = useCallback((id: number) => {
+    window.clearTimeout(id);
+    timersRef.current.delete(id);
+  }, []);
+
+  // Ensure cleanup on unmount
+  useEffect(() => {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    
+    return () => {
+      // Clear all timers
+      timersRef.current.forEach(id => window.clearTimeout(id));
+      timersRef.current.clear();
+      
+      // Abort pending requests
+      controller.abort();
+      
+      // Disconnect socket if connected
+      socketService.disconnect();
+    };
   }, []);
 
   const addBotMessage = useCallback(
@@ -358,54 +408,114 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleCreateConversation = useCallback(
     async (fullVisitorInfo: VisitorInfo) => {
       setIsTyping(true);
+      setSocketConnecting(true);
 
       try {
         const faqSession = SessionManager.get();
+        console.log('🔍 FAQ Session from SessionManager:', faqSession);
+        
         if (!faqSession) {
           throw new Error("No active session found. Please refresh and try again.");
         }
+        
+        if (!faqSession.sessionId) {
+          throw new Error("Session ID is missing. Current session: " + JSON.stringify(faqSession));
+        }
+        
+        if (!faqSession.sessionToken) {
+          throw new Error("Session token is missing. Current session: " + JSON.stringify(faqSession));
+        }
 
-        const response = await fetch(
-          `${apiBaseUrl}/api/widget/${faqSession.sessionId}/escalate-to-agent`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              session_token: faqSession.sessionToken,
-              visitor_name: fullVisitorInfo.name,
-              visitor_email: fullVisitorInfo.email,
-              visitor_phone: fullVisitorInfo.phone,
-            }),
-          }
+        // 🔑 Always use 'dev-tenant' for development (matches AgentDashboard)
+        // This ensures automatic synchronization between widget escalation and agent dashboard
+        const effectiveTenantId = 'dev-tenant';
+        
+        console.log('📤 Escalating with data:', {
+          sessionId: faqSession.sessionId,
+          sessionToken: faqSession.sessionToken,
+          visitorName: fullVisitorInfo.name,
+          visitorEmail: fullVisitorInfo.email,
+          botId,
+          tenantId: effectiveTenantId,
+          environment: process.env.NODE_ENV
+        });
+
+        // Build URL with botId and tenantId as query params
+        const escalateUrl = new URL(
+          `${apiBaseUrl}/api/widget/${faqSession.sessionId}/escalate-to-agent`
         );
+        escalateUrl.searchParams.append('botId', botId);
+        escalateUrl.searchParams.append('tenantId', effectiveTenantId);
 
-        if (!response.ok) throw new Error("Failed to connect to agent");
+        console.log('🔗 Escalate URL:', escalateUrl.toString());
+
+        const response = await fetch(escalateUrl.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_token: faqSession.sessionToken,
+            visitor_name: fullVisitorInfo.name,
+            visitor_email: fullVisitorInfo.email,
+            visitor_phone: fullVisitorInfo.phone,
+          }),
+        });
+
+        console.log('📨 Escalate response status:', response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('❌ Escalate error response:', errorData);
+          throw new Error(errorData.message || `HTTP ${response.status}: Failed to connect to agent`);
+        }
 
         const data = await response.json();
         console.log('✅ Escalation response:', data);
+
+        // 🔌 Connect socket with dynamic apiBaseUrl
+        try {
+          console.log('🔌 Connecting socket to:', apiBaseUrl);
+          await socketService.connect(apiBaseUrl); // ✅ Pass apiBaseUrl here
+          console.log('✅ Socket connected successfully');
+          
+          // 🔗 Join the session room
+          console.log('🔗 Joining session room...');
+          socketService.joinSessionRoom(faqSession.sessionId, faqSession.sessionToken);
+          console.log('✅ Joined session room');
+        } catch (err) {
+          console.error('Socket connection failed:', err);
+          throw new Error('Unable to connect to live chat server.');
+        }
+
+        // ✅ Extract just the message text (avoid displaying full JSON)
+        const messageText = typeof data === 'object' && data.message 
+          ? data.message 
+          : data || "Connecting you to an agent. Please wait...";
 
         startTransition(() => {
           // Keep same conversation ID (it's now a live chat session)
           setConversation({ id: faqSession.sessionId } as any);
           setSessionToken(faqSession.sessionToken);
           setVisitorInfo(fullVisitorInfo);
+          setActiveChatSessionId(faqSession.sessionId); // ✅ Store session ID for socket
           setChatMode('live-chat'); // ✅ SWITCH TO LIVE CHAT MODE
           setCurrentStep("chatting");
-          addBotMessage(
-            data.message || "Connecting you to an agent. Please wait...",
-            "bot"
-          );
+          addBotMessage(messageText, "bot");
         });
-      } catch (error: any) {
-        console.error("Failed to escalate to live chat:", error);
+
+        // ✅ Clear loading states immediately after escalation
         setIsTyping(false);
+        setSocketConnecting(false);
+      } catch (error: any) {
+        console.error("❌ Failed to escalate to live chat:", error.message || error);
+        setIsTyping(false);
+        setSocketConnecting(false);
         addBotMessage(
-          "Sorry, couldn't connect to an agent. Please try again.",
+          `Sorry, couldn't connect to an agent. ${error.message || "Please try again."}`,
           "bot"
         );
       }
     },
-    [apiBaseUrl, addBotMessage]
+    [apiBaseUrl, botId, addBotMessage]
   );
 
   // Helper to start collecting visitor information
@@ -782,25 +892,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     abortControllerRef.current = new AbortController();
 
     try {
-      let response;
-
       if (chatMode === 'live-chat') {
-        // ✅ Send to live chat endpoint
-        console.log(`📤 Sending live chat message to session: ${conversation.id}`);
-        response = await fetch(
-          `${apiBaseUrl}/api/live-chat/${conversation.id}/message`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: abortControllerRef.current.signal,
-            body: JSON.stringify({
-              content: userMsg,
-            }),
-          }
-        );
+        // ✅ Send via socket.io (real-time, like PlaygroundPage)
+        if (!activeChatSessionId) {
+          throw new Error('No active chat session');
+        }
+        console.log(`📤 Sending live chat message via socket: ${activeChatSessionId}`);
+        await socketService.sendMessage(activeChatSessionId, userMsg);
+        
+        // ✅ Mark message as sent (not pending)
+        startTransition(() => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticMsg.id ? { ...m, isPending: false } : m))
+          );
+        });
       } else {
-        // FAQ mode
-        response = await fetch(
+        // FAQ mode - HTTP
+        console.log(`📤 Sending FAQ message to conversation: ${conversation.id}`);
+        const response = await fetch(
           `${apiBaseUrl}/api/conversations/${conversation.id}/messages`,
           {
             method: "POST",
@@ -815,27 +924,26 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             }),
           }
         );
-      }
 
-      if (!response.ok) {
-        console.error('Send message failed:', response.status);
-        throw new Error("Failed to send message");
-      }
-
-      const data = await response.json();
-      console.log('✅ Message sent:', data);
-
-      startTransition(() => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === optimisticMsg.id ? { ...m, isPending: false } : m))
-        );
-        setIsTyping(false);
-
-        if (chatMode === 'faq' && data.botResponse) {
-          addBotMessage(data.botResponse.content.text, "bot");
+        if (!response.ok) {
+          console.error('Send message failed:', response.status);
+          throw new Error("Failed to send message");
         }
-        // For live chat, messages come via polling
-      });
+
+        const data = await response.json();
+        console.log('✅ Message sent:', data);
+
+        startTransition(() => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticMsg.id ? { ...m, isPending: false } : m))
+          );
+          if (data.botResponse) {
+            addBotMessage(data.botResponse.content.text, "bot");
+          }
+        });
+      }
+
+      setIsTyping(false);
     } catch (error: any) {
       if (error.name === "AbortError") return;
       
@@ -845,52 +953,77 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setMessages((prev) =>
           prev.map((m) => (m.id === optimisticMsg.id ? { ...m, isPending: false } : m))
         );
-        setIsTyping(false);
         addBotMessage("Sorry, something went wrong. Please try again.", "bot");
       });
-
-      
+      setIsTyping(false);
     }
-  }, [inputText, isTyping, conversation, sessionToken, apiBaseUrl, addBotMessage, chatMode]);
+  }, [inputText, isTyping, conversation, sessionToken, apiBaseUrl, addBotMessage, chatMode, activeChatSessionId]);
 
+  // 🚀 Set up socket listeners for live chat (like PlaygroundPage)
   useEffect(() => {
-    if (currentStep !== "chatting" || !conversation) return;
+    if (chatMode !== 'live-chat' || !activeChatSessionId) return;
+
+    console.log('📡 Setting up socket listeners for live chat');
+
+    // Listen for agent assignment
+    const unsubscribeAgent = socketService.onAgentAssigned(() => {
+      console.log('👤 Agent assigned');
+      addBotMessage("An agent has joined the chat. They can assist you now!", "bot");
+    });
+
+    // Listen for new messages from agent
+    const unsubscribeMessage = socketService.onNewMessage((data: any) => {
+      console.log('💬 New message received:', data);
+      if (data.sender_type === "AGENT") {
+        // ✅ Update messages immediately without transition for real-time feel
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === data.id)) return prev;
+          return [
+            ...prev,
+            {
+              id: data.id || genId(),
+              type: "agent",
+              content: data.content,
+              timestamp: data.created_at,
+              agentName: data.sender_name,
+            },
+          ];
+        });
+      }
+    });
+
+    // Listen for session closure
+    const unsubscribeClose = socketService.onSessionClosed(() => {
+      console.log('🔌 Chat session closed');
+      addBotMessage("Chat session has ended. Thank you for contacting us!", "bot");
+      setActiveChatSessionId(null);
+      setChatMode('faq');
+    });
+
+    // Cleanup
+    return () => {
+      if (typeof unsubscribeAgent === 'function') unsubscribeAgent();
+      if (typeof unsubscribeMessage === 'function') unsubscribeMessage();
+      if (typeof unsubscribeClose === 'function') unsubscribeClose();
+    };
+  }, [chatMode, activeChatSessionId]);
+
+  // Poll FAQ mode messages (if not using live chat)
+  useEffect(() => {
+    if (currentStep !== "chatting" || !conversation || chatMode === 'live-chat') return;
 
     const pollInterval = setInterval(async () => {
       try {
-        let response;
-        let messagesData = [];
+        // FAQ mode polling only
+        const response = await fetch(
+          `${apiBaseUrl}/api/conversations/${conversation.id}/messages`
+        );
 
-        if (chatMode === 'live-chat') {
-          // ✅ Poll live chat history
-          console.log(`📡 Polling live chat: ${conversation.id}`);
-          response = await fetch(
-            `${apiBaseUrl}/api/live-chat/${conversation.id}/history?limit=100`
+        if (!response.ok) return;
 
-
-          );
-
-          if (!response.ok) {
-            console.error('Live chat polling failed:', response.status);
-            return;
-          }
-
-          const data = await response.json();
-          console.log('📥 Live chat data:', data);
-          
-          // Response format: { success: true, data: { session, messages, count } }
-          messagesData = data.data?.messages || [];
-        } else {
-          // FAQ mode
-          response = await fetch(
-            `${apiBaseUrl}/api/conversations/${conversation.id}/messages`
-          );
-
-          if (!response.ok) return;
-
-          const data = await response.json();
-          messagesData = data.messages || [];
-        }
+        const data = await response.json();
+        const messagesData = data.messages || [];
 
         startTransition(() => {
           setMessages((prev: any) => {
@@ -898,31 +1031,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             
             const newMessages = messagesData.filter((m: any) => {
               if (existingIds.has(m.id)) return false;
-              
-              if (chatMode === 'live-chat') {
-                // Show AGENT, BOT, SYSTEM messages
-                return ['AGENT', 'BOT', 'SYSTEM'].includes(m.sender_type);
-              } else {
-                return m.sender_type === 'BOT';
-              }
+              return m.sender_type === 'BOT';
             });
 
             if (newMessages.length === 0) return prev;
 
             const newBubbles = newMessages.map((m: any) => ({
               id: m.id,
-              type: m.sender_type === 'AGENT' ? 'agent' : 'bot',
+              type: 'bot',
               content: m.content?.text || m.content || '',
               timestamp: m.created_at,
-              agentName: m.sender_name,
             }));
 
-            console.log('✅ Added new messages:', newBubbles.length);
+            console.log('✅ Added new FAQ messages:', newBubbles.length);
             return [...prev, ...newBubbles];
           });
         });
       } catch (error) {
-        console.error("Polling error:", error);
+        console.error("FAQ polling error:", error);
       }
     }, 2000);
 
@@ -978,11 +1104,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div
       ref={containerRef}
       className={cn(
-        "cali-chat-widget w-[380px] h-[600px] rounded-2xl bg-theme-base-100 shadow-2xl flex flex-col overflow-hidden border border-theme-base-300",
+        "cali-chat-widget w-[380px] h-[600px] rounded-theme bg-theme-base-100 shadow-2xl flex flex-col overflow-hidden border border-theme-base-300",
         featureUI?.darkMode && "dark"
       )}
       style={{
         fontFamily: theme.typography.fontFamily as string,
+        fontSize: theme.typography.fontSize as string,
+        borderRadius: 'var(--theme-border-radius)',
       }}
     >
       {/* Header */}
@@ -1046,6 +1174,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       key={msg.id}
                       content={msg.content}
                       agentName={msg.agentName}
+                      timestamp={msg.timestamp}
                     />
                   );
                 case "conversational-question":
@@ -1093,7 +1222,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   ? "Enter your phone number..."
                   : "Type your message..."
               }
-              className="flex-1 px-4 py-2 rounded-lg bg-theme-base-200 border border-theme-base focus:outline-none focus:ring-2 focus:ring-theme-primary text-theme-base-content placeholder:text-theme-neutral disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 rounded-theme-input bg-theme-base-200 border border-theme-base focus:outline-none focus:ring-2 focus:ring-theme-primary text-theme-base-content placeholder:text-theme-neutral disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isTyping || isPending}
             />
             <Button

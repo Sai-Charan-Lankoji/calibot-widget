@@ -75,4 +75,8 @@ export interface WidgetConfig {
   welcomeMessage?: string
   position?: "bottom-left" | "bottom-right"
   useFavicon?: boolean
+  /** Pre-loaded bot configuration (for preview mode) */
+  initialConfig?: BotConfiguration
+  /** Callback when widget is closed */
+  onClose?: () => void
 }

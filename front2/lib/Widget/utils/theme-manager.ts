@@ -65,7 +65,7 @@ export function extractThemeFromBot(bot: any): ThemeConfig {
     },
     typography: {
       fontFamily: themeTypography.fontFamily || DEFAULT_THEME.typography.fontFamily,
-      fontSize: themeTypography.fontSizeBase || DEFAULT_THEME.typography.fontSize,
+      fontSize: themeTypography.fontSize || themeTypography.fontSizeBase || DEFAULT_THEME.typography.fontSize,
       lineHeight: themeTypography.lineHeight || DEFAULT_THEME.typography.lineHeight,
       fontWeightNormal: themeTypography.fontWeightNormal || DEFAULT_THEME.typography.fontWeightNormal,
       fontWeightMedium: themeTypography.fontWeightMedium || DEFAULT_THEME.typography.fontWeightMedium,
@@ -124,11 +124,11 @@ export function applyThemeToElement(element: HTMLElement, theme: ThemeConfig, da
 
   // Apply typography
   element.style.setProperty("--theme-font-family", theme.typography.fontFamily as string)
-  element.style.setProperty("--theme-font-size", theme.typography.fontSize as string)
-  element.style.setProperty("--theme-line-height", theme.typography.lineHeight.toString())
-  element.style.setProperty("--theme-font-weight-normal", theme.typography.fontWeightNormal.toString())
-  element.style.setProperty("--theme-font-weight-medium", theme.typography.fontWeightMedium.toString())
-  element.style.setProperty("--theme-font-weight-bold", theme.typography.fontWeightBold.toString())
+  element.style.setProperty("--theme-font-size", (theme.typography.fontSize || '14px') as string)
+  element.style.setProperty("--theme-line-height", (theme.typography.lineHeight || 1.5).toString())
+  element.style.setProperty("--theme-font-weight-normal", (theme.typography.fontWeightNormal || 400).toString())
+  element.style.setProperty("--theme-font-weight-medium", (theme.typography.fontWeightMedium || 500).toString())
+  element.style.setProperty("--theme-font-weight-bold", (theme.typography.fontWeightBold || 600).toString())
 
   // Apply layout
   element.style.setProperty("--theme-border-radius", theme.layout.borderRadius as string)

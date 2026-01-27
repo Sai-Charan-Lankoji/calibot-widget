@@ -196,5 +196,9 @@ export interface WidgetConfig {
   welcomeMessage?: string;
   avatarSrc?: string;
   useFavicon?: boolean;
+  /** Pre-loaded bot configuration (for preview mode) */
+  initialConfig?: BotConfiguration;
+  /** Callback when widget is closed */
+  onClose?: () => void;
 }
 

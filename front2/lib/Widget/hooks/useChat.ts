@@ -25,27 +25,42 @@ export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
   const apiRef = useRef(new WidgetApi(apiBaseUrl));
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const initializingRef = useRef(false); // Add this to prevent double init
+
   // Initialize session on mount
   useEffect(() => {
-    initializeSession();
+    // Prevent double initialization in StrictMode
+    if (initializingRef.current) return;
+    initializingRef.current = true;
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    
+    initializeSession(controller.signal);
 
     return () => {
-      abortControllerRef.current?.abort();
+      controller.abort();
+      initializingRef.current = false;
+      // Clear any timers
     };
   }, [botId]);
 
-  const initializeSession = async () => {
+  const initializeSession = async (signal?: AbortSignal) => {
     try {
       setIsLoading(true);
 
-      // Check for existing session
       const existingSession = SessionManager.get();
 
       const response = await apiRef.current.initSession(
         botId,
         existingSession?.sessionToken,
-        existingSession?.visitorId
+        existingSession?.visitorId,
+        undefined,
+        signal // Pass abort signal
       );
+
+      // Check if aborted
+      if (signal?.aborted) return;
 
       // Save session
       SessionManager.set({
@@ -62,9 +77,9 @@ export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
         `✅ Session ${response.resumed ? "resumed" : "created"}:`,
         response.session_id
       );
-    } catch (error: any) {
-      console.error("Failed to initialize session:", error);
-      onError?.(error);
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') return;
+      onError?.(error as Error);
     } finally {
       setIsLoading(false);
     }

@@ -25,14 +25,14 @@ export const Avatar = React.memo<AvatarProps>(({ src, fallback, size = "md", cla
         <img
           src={src || "/placeholder.svg"}
           alt="Avatar"
-          className={cn(sizeMap[size], "rounded-full object-cover bg-theme-base-200 border border-theme-base")}
+          className={cn(sizeMap[size], "rounded-theme-avatar object-cover bg-theme-base-200 border border-theme-base")}
           onError={() => setImgError(true)}
         />
       ) : (
         <div
           className={cn(
             sizeMap[size],
-            "rounded-full bg-theme-secondary text-theme-secondary-content flex items-center justify-center font-semibold",
+            "rounded-theme-avatar bg-theme-secondary text-theme-secondary-content flex items-center justify-center font-semibold",
             size === "sm" ? "text-xs" : size === "md" ? "text-sm" : "text-base",
           )}
         >

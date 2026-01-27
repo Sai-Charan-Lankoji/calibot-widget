@@ -1,0 +1,107 @@
+/* Import Tailwind base utilities for the widget */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Widget-specific custom styles */
+.cali-chat-widget {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure all widget elements have proper box-sizing */
+.cali-chat-widget *,
+.cali-chat-widget *::before,
+.cali-chat-widget *::after {
+  box-sizing: border-box;
+}
+
+/* Button resets */
+.cali-chat-widget button {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/* Input resets */
+.cali-chat-widget input,
+.cali-chat-widget textarea {
+  font: inherit;
+  color: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+/* Scrollbar styling for chat */
+.cali-chat-widget ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cali-chat-widget ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cali-chat-widget ::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+/* Animation keyframes */
+@keyframes cali-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cali-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cali-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
+}
+
+.cali-animate-fade-in {
+  animation: cali-fade-in 0.2s ease-out;
+}
+
+.cali-animate-scale-in {
+  animation: cali-scale-in 0.2s ease-out;
+}
+
+.cali-typing-dot {
+  animation: cali-bounce 1.4s infinite ease-in-out both;
+}
+
+.cali-typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.cali-typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}

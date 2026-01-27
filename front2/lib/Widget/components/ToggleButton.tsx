@@ -51,7 +51,7 @@ export const ToggleButton: React.FC<ToggleButtonProps> = ({
       onClick={onClick}
       disabled={isLoading}
       className={cn(
-        "relative flex items-center justify-center w-14 h-14 rounded-full shadow-lg transition-all duration-200",
+        "relative flex items-center justify-center w-14 h-14 rounded-theme-avatar shadow-lg transition-all duration-200",
         "hover:scale-110 active:scale-95",
         "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary",
         "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -69,7 +69,7 @@ export const ToggleButton: React.FC<ToggleButtonProps> = ({
         <img
           src={avatarSrc}
           alt="Chat avatar"
-          className="w-10 h-10 rounded-full object-cover"
+          className="w-10 h-10 rounded-theme-avatar object-cover"
         />
       ) : (
         <MessageCircle className="w-7 h-7" />
@@ -77,7 +77,7 @@ export const ToggleButton: React.FC<ToggleButtonProps> = ({
 
       {/* Pulse animation — disabled for avatar to avoid covering image */}
       {!hasAvatar && (
-        <div className="absolute inset-0 rounded-full bg-theme-primary opacity-40 animate-ping pointer-events-none" />
+        <div className="absolute inset-0 rounded-theme-avatar bg-theme-primary opacity-40 animate-ping pointer-events-none" />
       )}
     </button>
   );

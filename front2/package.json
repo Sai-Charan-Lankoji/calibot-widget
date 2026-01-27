@@ -1,6 +1,6 @@
 {
     "name": "cali-chat-widget",
-    "version": "0.0.12",
+    "version": "0.0.11",
     "description": "A simple AI chat widget using webhooks.",
     "type": "module",
     "main": "dist/cali-chat-widget.umd.js",
@@ -60,6 +60,7 @@
         "lucide-react": "^0.554.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
+        "socket.io-client": "^4.8.3",
         "tailwind-merge": "^3.4.0",
         "tailwindcss": "^4.1.17"
     }

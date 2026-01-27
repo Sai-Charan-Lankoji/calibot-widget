@@ -7,49 +7,41 @@ import { ToggleButton } from "./components/ToggleButton"
 import { extractThemeFromBot, applyThemeToElement } from "./utils/theme-manager"
 import { WidgetApi } from "./utils/api"
 import "./theme-variables.css"
+import { WelcomePopover } from './components/WelcomePopover';
+import { WidgetErrorBoundary } from './components/ErrorBoundary';
 
-export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; initialConfig?: BotConfiguration | null }> = ({
-  botId,
-  apiBaseUrl,
-  primaryColor,
-  avatarSrc,
-  botName: propBotName,
-  welcomeMessage: propWelcomeMessage,
-  position = "bottom-right",
-  useFavicon = true,
-  onClose,
-  initialConfig,
-}) => {
+export function CaliChatWidget(props: WidgetConfig) {
   const [isOpen, setIsOpen] = useState(false)
-  const [botConfig, setBotConfig] = useState<BotConfiguration | null>(initialConfig || null)
-  const [isLoading, setIsLoading] = useState(!initialConfig)
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [botConfig, setBotConfig] = useState<BotConfiguration | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const widgetRef = React.useRef<HTMLDivElement>(null)
 
   // Update internal state if initialConfig changes (for preview)
   useEffect(() => {
-    if (initialConfig) {
-      setBotConfig(initialConfig)
+    if (props.initialConfig) {
+      setBotConfig(props.initialConfig)
       setIsLoading(false)
       
       // Apply theme immediately
       if (widgetRef.current) {
-        const theme = extractThemeFromBot(initialConfig)
-        applyThemeToElement(widgetRef.current, theme, initialConfig.feature_ui?.darkMode)
+        const theme = extractThemeFromBot(props.initialConfig)
+        applyThemeToElement(widgetRef.current, theme, props.initialConfig.feature_ui?.darkMode)
       }
     }
-  }, [initialConfig])
+  }, [props.initialConfig])
 
   useEffect(() => {
     // Skip fetch if we have initialConfig and it matches the botId (simple check)
-    if (initialConfig && initialConfig.id === botId) return
+    if (props.initialConfig && props.initialConfig.id === props.botId) return
 
     const fetchBotConfig = async () => {
       try {
         setIsLoading(true)
-        const api = new WidgetApi(apiBaseUrl)
+        const api = new WidgetApi(props.apiBaseUrl)
         
-        const data = await api.getBotTheme(botId)
+        const data = await api.getBotTheme(props.botId)
         const config = data.bot as BotConfiguration
 
         setBotConfig(config)
@@ -68,9 +60,9 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
         
         // Set default config so widget still works
         setBotConfig({
-          id: botId,
-          bot_name: propBotName || "Support",
-          welcome_message: propWelcomeMessage || "How can we help?",
+          id: props.botId,
+          bot_name: props.botName || "Support",
+          welcome_message: props.welcomeMessage || "How can we help?",
           theme_colors: {
   /* Primary brand color — Blue 500 */
   primary: "#3B82F6",          
@@ -137,7 +129,7 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
           },
           theme_branding: {
             logoUrl: null,
-            avatarUrl: avatarSrc || null,
+            avatarUrl: props.avatarSrc || null,
             faviconUrl: null,
             companyName: null,
             poweredByText: "Powered by Calibrage",
@@ -179,19 +171,45 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
       }
     }
 
-    if (!initialConfig) {
+    if (!props.initialConfig) {
       fetchBotConfig()
     }
-  }, [botId, apiBaseUrl, propBotName, propWelcomeMessage, avatarSrc, initialConfig])
+  }, [props.botId, props.apiBaseUrl, props.botName, props.welcomeMessage, props.avatarSrc, props.initialConfig])
 
   const handleClose = () => {
     setIsOpen(false)
-    onClose?.()
+    props.onClose?.()
   }
 
   const handleOpen = () => {
     setIsOpen(true)
   }
+
+  useEffect(() => {
+    // Show welcome message on first load (check session storage)
+    const hasSeenWelcome = sessionStorage.getItem('cali-chat-welcome-seen');
+    if (!hasSeenWelcome && !isOpen) {
+      const timer = setTimeout(() => {
+        setShowWelcome(true);
+      }, 1000); // Delay 1 second after page load
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  const handleWelcomeClose = () => {
+    setShowWelcome(false);
+    sessionStorage.setItem('cali-chat-welcome-seen', 'true');
+  };
+
+  const handleToggle = () => {
+    setIsOpen(!isOpen);
+    if (showWelcome) {
+      handleWelcomeClose();
+    }
+  };
+
+  const position = props.position || botConfig?.theme_layout?.position || "bottom-right";
 
   if (isLoading) {
     return (
@@ -199,41 +217,52 @@ export const CaliChatWidget: React.FC<WidgetConfig & { onClose?: () => void; ini
         ref={widgetRef}
         className={`cali-chat-widget fixed bottom-4 z-50 ${position === "bottom-left" ? "left-4" : "right-4"}`}
       >
-        <div className="w-14 h-14 rounded-full bg-theme-primary flex items-center justify-center animate-pulse">
+        <div className="w-14 h-14 rounded-theme-avatar bg-theme-primary flex items-center justify-center animate-pulse">
           <div className="w-6 h-6 border-2 border-theme-primary-content border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
     )
   }
 
-  const finalBotName = propBotName || botConfig?.bot_name || "Support"
-  const finalWelcomeMessage = propWelcomeMessage || botConfig?.welcome_message || "How can we help?"
-  const finalAvatarSrc = avatarSrc || botConfig?.theme_branding?.avatarUrl || undefined
+  const finalBotName = props.botName || botConfig?.bot_name || "Support"
+  const finalWelcomeMessage = props.welcomeMessage || botConfig?.welcome_message || "How can we help?"
+  const finalAvatarSrc = props.avatarSrc || botConfig?.theme_branding?.avatarUrl || undefined
 
   return (
-    <div
-      ref={widgetRef}
-      className={`cali-chat-widget fixed bottom-4 z-50 ${position === "bottom-left" ? "left-4" : "right-4"}`}
-    >
-      {isOpen && botConfig && (
-        <div className="widget-animate-in mb-4">
-          <ChatInterface
-            botName={finalBotName}
-            welcomeMessage={finalWelcomeMessage}
-            avatarSrc={finalAvatarSrc}
-            apiBaseUrl={apiBaseUrl}
-            botId={botId}
-            onClose={handleClose}
-            botConfig={botConfig}
-            featureChat={botConfig.feature_chat}
-            featureUI={botConfig.feature_ui}
-          />
-        </div>
-      )}
+    <WidgetErrorBoundary>
+      <div
+        ref={widgetRef}
+        className={`cali-chat-widget fixed bottom-4 z-50 ${position === "bottom-left" ? "left-4" : "right-4"}`}
+      >
+        {isOpen && botConfig && (
+          <div className="widget-animate-in mb-4">
+            <ChatInterface
+              botName={finalBotName}
+              welcomeMessage={finalWelcomeMessage}
+              avatarSrc={finalAvatarSrc}
+              apiBaseUrl={props.apiBaseUrl}
+              botId={props.botId}
+              onClose={handleClose}
+              botConfig={botConfig}
+              featureChat={botConfig.feature_chat}
+              featureUI={botConfig.feature_ui}
+            />
+          </div>
+        )}
 
-      {!isOpen && (
-        <ToggleButton onClick={handleOpen} primaryColor={primaryColor} avatarSrc={finalAvatarSrc} />
-      )}
-    </div>
+        {!isOpen && (
+          <ToggleButton onClick={handleOpen} primaryColor={props.primaryColor} avatarSrc={finalAvatarSrc} />
+        )}
+        
+        {/* Move WelcomePopover INSIDE the themed container */}
+        {showWelcome && !isOpen && (
+          <WelcomePopover
+            message={props.welcomeMessage || botConfig?.welcome_message || "👋 Hi! How can we help you today?"}
+            onClose={handleWelcomeClose}
+            autoHideDuration={6000}
+          />
+        )}
+      </div>
+    </WidgetErrorBoundary>
   )
 }

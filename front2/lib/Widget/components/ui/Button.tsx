@@ -11,7 +11,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button = React.memo<ButtonProps>(
   ({ variant = "primary", size = "md", isLoading, disabled, className, children, ...props }) => {
     const baseStyles =
-      "rounded-xl font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary"
+      "rounded-theme-button font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-theme-primary"
 
     const variantStyles = {
       primary: "bg-theme-primary text-theme-primary-content hover:brightness-110 shadow-sm",
