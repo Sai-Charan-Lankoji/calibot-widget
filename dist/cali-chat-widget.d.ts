@@ -98,6 +98,7 @@ declare interface ThemeLayout {
     buttonRadius: string;
     inputRadius: string;
     avatarRadius: string;
+    bubbleRadius: string;
     containerPadding: string;
     messagePadding: string;
 }

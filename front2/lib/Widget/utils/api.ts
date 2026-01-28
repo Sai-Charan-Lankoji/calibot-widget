@@ -5,6 +5,7 @@ import {
   Message,
   Conversation,
 } from "@/types";
+import { logger } from "./logger";
 
 export class ApiError extends Error {
   constructor(
@@ -118,7 +119,7 @@ export class WidgetApi {
           error instanceof TypeError &&
           attempt < this.retryConfig.maxRetries
         ) {
-          console.log(
+          logger.log(
             `Retry attempt ${attempt + 1}/${this.retryConfig.maxRetries}...`
           );
           await new Promise((resolve) =>

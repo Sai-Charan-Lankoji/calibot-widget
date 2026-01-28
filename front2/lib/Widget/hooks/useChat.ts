@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { WidgetApi } from "../utils/api";
 import { SessionManager } from "../utils/session";
+import { logger } from "../utils/logger";
 
 interface ChatQuestion {
   id: string;
@@ -73,7 +74,7 @@ export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
       });
 
       setSessionInitialized(true);
-      console.log(
+      logger.log(
         `✅ Session ${response.resumed ? "resumed" : "created"}:`,
         response.session_id
       );
@@ -210,6 +211,11 @@ export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
     initializeSession();
   }, []);
 
+  // Allow external restoration of question state
+  const restoreQuestion = useCallback((question: ChatQuestion | null) => {
+    setCurrentQuestion(question);
+  }, []);
+
   return {
     currentQuestion,
     isLoading,
@@ -218,5 +224,6 @@ export function useChat({ botId, apiBaseUrl, onError }: UseChatOptions) {
     startChat,
     sendMessage,
     resetChat,
+    setCurrentQuestion: restoreQuestion, // Expose for state restoration
   };
 }

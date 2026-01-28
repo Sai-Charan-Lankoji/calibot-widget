@@ -1,5 +1,6 @@
 // front2/lib/Widget/services/socketService.ts
 import io, { Socket } from 'socket.io-client';
+import { logger } from '../utils/logger';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -31,6 +32,8 @@ class SocketService {
 
     return new Promise((resolve, reject) => {
       try {
+        logger.log('🔌 [VISITOR] Socket connecting to:', targetUrl);
+        
         this.socket = io(targetUrl, {
           reconnection: true,
           reconnectionDelay: 1000,
@@ -43,19 +46,22 @@ class SocketService {
         });
 
         this.socket.on('connect', () => {
-          console.log('🔌 Socket connected:', this.socket?.id, 'to', targetUrl);
+          logger.log('✅ [VISITOR] Socket connected:', this.socket?.id);
+          logger.log('📍 [VISITOR] Connected to:', targetUrl);
+          logger.log('🔄 [VISITOR] Transport:', this.socket?.io?.engine?.transport?.name);
           resolve(this.socket!);
         });
 
         this.socket.on('disconnect', () => {
-          console.log('❌ Socket disconnected');
+          logger.log('❌ [VISITOR] Socket disconnected');
         });
 
         this.socket.on('connect_error', (error) => {
-          console.error('Socket connection error:', error);
+          console.error('🔴 [VISITOR] Socket connection error:', error);
           reject(error);
         });
       } catch (error) {
+        console.error('🔴 [VISITOR] Socket creation error:', error);
         reject(error);
       }
     });
@@ -112,10 +118,10 @@ class SocketService {
   joinSessionRoom(sessionId: string, sessionToken: string): void {
     if (!this.socket) return;
     
-    console.log(`🔗 Joining session room: session:${sessionId}`);
+    logger.log(`🔗 Joining session room: session:${sessionId}`);
     this.socket.emit('visitor:join_session', { sessionId, sessionToken }, (response: any) => {
       if (response.success) {
-        console.log(`✅ Successfully joined session room`);
+        logger.log(`✅ Successfully joined session room`);
       } else {
         console.error(`❌ Failed to join session room:`, response.error);
       }

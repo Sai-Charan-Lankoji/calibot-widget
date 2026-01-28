@@ -1,4 +1,5 @@
 import { ChatSession } from "@/types";
+import { logger } from './logger';
 
 const SESSION_KEY = "cali_chat_session";
 const SESSION_TIMEOUT_HOURS = 24;
@@ -29,7 +30,7 @@ export class SessionManager {
         (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
 
       if (hoursDiff > SESSION_TIMEOUT_HOURS) {
-        console.log(
+        logger.log(
           `Session expired (${hoursDiff.toFixed(
             1
           )}h > ${SESSION_TIMEOUT_HOURS}h), clearing...`
@@ -52,7 +53,7 @@ export class SessionManager {
   static set(session: ChatSession): void {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      console.log("✅ Session saved:", {
+      logger.log("✅ Session saved:", {
         sessionId: session.sessionId,
         visitor: session.visitorInfo?.name || "Anonymous",
       });
@@ -68,7 +69,7 @@ export class SessionManager {
   static clear(): void {
     try {
       sessionStorage.removeItem(SESSION_KEY);
-      console.log("🗑️ Session cleared");
+      logger.log("🗑️ Session cleared");
     } catch (error) {
       console.error("Failed to clear session:", error);
     }

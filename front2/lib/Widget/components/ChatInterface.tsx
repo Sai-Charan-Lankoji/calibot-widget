@@ -25,6 +25,7 @@ import {
 } from "../utils/theme-manager";
 import { SessionManager } from "../utils/session";
 import socketService from "@/Widget/services/socketService";
+import { logger } from "../utils/logger";
 // import "../theme-variables.css"
 
 import "../globals.css";
@@ -66,7 +67,7 @@ const UserMessage = React.memo<{ content: string; isPending?: boolean }>(
     <div className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div
         className={cn(
-          "max-w-[80%] bg-theme-primary text-theme-primary-content px-4 py-3 rounded-2xl rounded-br-md shadow-lg",
+          "max-w-[80%] bg-theme-primary text-theme-primary-content px-4 py-3 rounded-theme-bubble rounded-br-md shadow-lg",
           isPending && "opacity-60 animate-pulse"
         )}
       >
@@ -89,7 +90,7 @@ const BotMessage = React.memo<{
       size="sm"
       className="shrink-0 mt-1"
     />
-    <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-base">
+    <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-theme-bubble rounded-bl-md shadow-md border border-theme-base">
       <p className="text-sm text-theme-base-content whitespace-pre-wrap leading-relaxed">
         {content}
       </p>
@@ -122,7 +123,7 @@ const AgentMessage = React.memo<{ content: string; agentName?: string; timestamp
         <div className="w-8 h-8 rounded-full bg-theme-accent text-theme-primary-content flex items-center justify-center text-xs font-bold ring-2 ring-theme-base-100 shadow-md">
           {agentName?.charAt(0) || "A"}
         </div>
-        <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-accent">
+        <div className="max-w-[85%] bg-theme-base-100 px-4 py-3 rounded-theme-bubble rounded-bl-md shadow-md border border-theme-accent">
           <p className="text-xs font-semibold text-theme-accent mb-1">
             {agentName || "Support Agent"}
           </p>
@@ -173,7 +174,7 @@ const TypingIndicator = React.memo<{ avatarSrc?: string; botName: string }>(
         size="sm"
         className="shrink-0"
       />
-      <div className="bg-theme-base-100 px-4 py-3 rounded-2xl rounded-bl-md shadow-md border border-theme-base">
+      <div className="bg-theme-base-100 px-4 py-3 rounded-theme-bubble rounded-bl-md shadow-md border border-theme-base">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce [animation-delay:-0.3s]" />
           <span className="w-2 h-2 bg-theme-neutral rounded-full animate-bounce [animation-delay:-0.15s]" />
@@ -205,6 +206,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     startChat,
     sendMessage: sendHookMessage,
     resetChat,
+    setCurrentQuestion: setHookQuestion, // For state restoration
   } = useChat({
     botId,
     apiBaseUrl,
@@ -237,6 +239,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const initialChatDataRef = useRef<any>(null);
   const stateRestoredRef = useRef(false);
+  const initializedRef = useRef(false);
   const [isPending, startTransition] = useTransition();
   const [theme, setTheme] = useState<ThemeConfig>(DEFAULT_THEME);
   const [chatMode, setChatMode] = useState<'faq' | 'live-chat'>('faq');
@@ -275,10 +278,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         // Only restore if we have actual messages (not empty state)
         if (state.messages && state.messages.length > 0) {
-          console.log("📂 Restoring chat state from sessionStorage:", state);
+          logger.log("📂 Restoring chat state from sessionStorage:", state);
 
-          // Mark that we restored state
+          // Mark that we restored state - MUST be before setting initializedRef
           stateRestoredRef.current = true;
+          initializedRef.current = true; // Prevent re-initialization
 
           // Restore all state
           setMessages(state.messages);
@@ -286,21 +290,33 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           if (state.visitorInfo) setVisitorInfo(state.visitorInfo);
           if (state.conversation) setConversation(state.conversation);
           if (state.sessionToken) setSessionToken(state.sessionToken);
-          // if (state.currentQuestion) setCurrentQuestion(state.currentQuestion);
+          // Restore the current question if it was saved
+          if (state.currentQuestion) {
+            setHookQuestion(state.currentQuestion);
+          }
+          // Restore chat mode (faq vs live-chat)
+          if (state.chatMode) {
+            setChatMode(state.chatMode);
+          }
           if (state.initialChatData)
             initialChatDataRef.current = state.initialChatData;
+          
+          logger.log("✅ Chat state restored successfully");
         } else {
-          console.log("🗑️ Clearing empty sessionStorage state");
+          logger.log("🗑️ Clearing empty sessionStorage state");
           sessionStorage.removeItem(`cali_chat_state_${botId}`);
         }
       }
     } catch (error) {
       console.error("Failed to restore chat state:", error);
     }
-  }, [botId]);
+  }, [botId, setHookQuestion]);
 
   // Save chat state to sessionStorage whenever it changes
   useEffect(() => {
+    // Don't save if there are no messages yet (prevents saving empty state)
+    if (messages.length === 0) return;
+    
     try {
       const stateToSave = {
         messages,
@@ -308,17 +324,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         visitorInfo,
         conversation,
         sessionToken,
-        // currentQuestion,
+        currentQuestion: hookQuestion, // Save current question for restoration
         initialChatData: initialChatDataRef.current,
+        chatMode, // Save chat mode (faq vs live-chat)
       };
       sessionStorage.setItem(
         `cali_chat_state_${botId}`,
         JSON.stringify(stateToSave)
       );
+      logger.log("💾 Chat state saved", { messageCount: messages.length, currentStep, hasQuestion: !!hookQuestion });
     } catch (error) {
       console.error("Failed to save chat state:", error);
     }
-  }, [messages, currentStep, visitorInfo, conversation, sessionToken, botId]);
+  }, [messages, currentStep, visitorInfo, conversation, sessionToken, botId, hookQuestion, chatMode]);
 
   const scrollToBottom = useCallback(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -412,7 +430,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       try {
         const faqSession = SessionManager.get();
-        console.log('🔍 FAQ Session from SessionManager:', faqSession);
+        logger.log('🔍 FAQ Session from SessionManager:', faqSession);
         
         if (!faqSession) {
           throw new Error("No active session found. Please refresh and try again.");
@@ -430,7 +448,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         // This ensures automatic synchronization between widget escalation and agent dashboard
         const effectiveTenantId = 'dev-tenant';
         
-        console.log('📤 Escalating with data:', {
+        logger.log('📤 Escalating with data:', {
           sessionId: faqSession.sessionId,
           sessionToken: faqSession.sessionToken,
           visitorName: fullVisitorInfo.name,
@@ -447,7 +465,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         escalateUrl.searchParams.append('botId', botId);
         escalateUrl.searchParams.append('tenantId', effectiveTenantId);
 
-        console.log('🔗 Escalate URL:', escalateUrl.toString());
+        logger.log('🔗 Escalate URL:', escalateUrl.toString());
 
         const response = await fetch(escalateUrl.toString(), {
           method: "POST",
@@ -460,7 +478,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }),
         });
 
-        console.log('📨 Escalate response status:', response.status);
+        logger.log('📨 Escalate response status:', response.status);
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -469,18 +487,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
 
         const data = await response.json();
-        console.log('✅ Escalation response:', data);
+        logger.log('✅ Escalation response:', data);
 
         // 🔌 Connect socket with dynamic apiBaseUrl
         try {
-          console.log('🔌 Connecting socket to:', apiBaseUrl);
+          logger.log('🔌 Connecting socket to:', apiBaseUrl);
           await socketService.connect(apiBaseUrl); // ✅ Pass apiBaseUrl here
-          console.log('✅ Socket connected successfully');
+          logger.log('✅ Socket connected successfully');
           
           // 🔗 Join the session room
-          console.log('🔗 Joining session room...');
+          logger.log('🔗 Joining session room...');
           socketService.joinSessionRoom(faqSession.sessionId, faqSession.sessionToken);
-          console.log('✅ Joined session room');
+          logger.log('✅ Joined session room');
         } catch (err) {
           console.error('Socket connection failed:', err);
           throw new Error('Unable to connect to live chat server.');
@@ -594,6 +612,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     handleCreateConversation,
   ]);
 
+  const handleRestart = useCallback(async () => {
+    // Clear restored state flag to allow fresh initialization
+    stateRestoredRef.current = false;
+    initializedRef.current = false;
+    
+    // Clear saved state
+    sessionStorage.removeItem(`cali_chat_state_${botId}`);
+    
+    // Reset hook and UI state
+    resetChat();
+    setMessages([]);
+    setCurrentStep("welcome");
+  }, [resetChat, botId]);
+
   const handleOptionSelect = useCallback(
     async (option: string) => {
       if (!hookQuestion) return; // ✅ Use hook's question
@@ -625,12 +657,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   },
                   {
                     label: "🔄 Start Over",
-                    onClick: () => {
-                      // Inline restart logic to avoid circular dependency
-                      resetChat(); // Use the hook's resetChat
-                      setMessages([]);
-                      setCurrentStep("welcome");
-                    },
+                    onClick: handleRestart, // Use the proper restart handler
                   },
                 ],
               });
@@ -659,26 +686,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       addBotMessage,
       setManagedTimeout,
       handleContactSupport,
+      handleRestart,
       resetChat,
     ]
   );
 
-  const handleRestart = useCallback(async () => {
-    // ✅ Simple: Use the hook's reset
-    resetChat();
-    setMessages([]);
-    setCurrentStep("welcome");
-  }, [resetChat]);
-
-  const initializedRef = useRef(false);
-
   useEffect(() => {
     const initializeChat = async () => {
+      // Skip initialization if state was restored from storage
+      if (stateRestoredRef.current) {
+        logger.log("⏭️ Skipping initialization - state was restored from storage");
+        return;
+      }
+      
       if (initializedRef.current || !sessionInitialized) return;
       initializedRef.current = true;
 
       try {
-        console.log("🚀 Starting conversational chat with session...");
+        logger.log("🚀 Starting conversational chat with session...");
         const data = await startChat(); // ✅ Hook's startChat includes session credentials
 
         if (!data) return;
@@ -897,7 +922,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         if (!activeChatSessionId) {
           throw new Error('No active chat session');
         }
-        console.log(`📤 Sending live chat message via socket: ${activeChatSessionId}`);
+        logger.log(`📤 Sending live chat message via socket: ${activeChatSessionId}`);
         await socketService.sendMessage(activeChatSessionId, userMsg);
         
         // ✅ Mark message as sent (not pending)
@@ -908,7 +933,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         });
       } else {
         // FAQ mode - HTTP
-        console.log(`📤 Sending FAQ message to conversation: ${conversation.id}`);
+        logger.log(`📤 Sending FAQ message to conversation: ${conversation.id}`);
         const response = await fetch(
           `${apiBaseUrl}/api/conversations/${conversation.id}/messages`,
           {
@@ -931,7 +956,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
 
         const data = await response.json();
-        console.log('✅ Message sent:', data);
+        logger.log('✅ Message sent:', data);
 
         startTransition(() => {
           setMessages((prev) =>
@@ -963,17 +988,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   useEffect(() => {
     if (chatMode !== 'live-chat' || !activeChatSessionId) return;
 
-    console.log('📡 Setting up socket listeners for live chat');
+    logger.log('📡 Setting up socket listeners for live chat');
 
     // Listen for agent assignment
     const unsubscribeAgent = socketService.onAgentAssigned(() => {
-      console.log('👤 Agent assigned');
+      logger.log('👤 Agent assigned');
       addBotMessage("An agent has joined the chat. They can assist you now!", "bot");
     });
 
     // Listen for new messages from agent
     const unsubscribeMessage = socketService.onNewMessage((data: any) => {
-      console.log('💬 New message received:', data);
+      logger.log('💬 New message received:', data);
       if (data.sender_type === "AGENT") {
         // ✅ Update messages immediately without transition for real-time feel
         setMessages((prev) => {
@@ -995,7 +1020,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     // Listen for session closure
     const unsubscribeClose = socketService.onSessionClosed(() => {
-      console.log('🔌 Chat session closed');
+      logger.log('🔌 Chat session closed');
       addBotMessage("Chat session has ended. Thank you for contacting us!", "bot");
       setActiveChatSessionId(null);
       setChatMode('faq');
@@ -1043,7 +1068,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               timestamp: m.created_at,
             }));
 
-            console.log('✅ Added new FAQ messages:', newBubbles.length);
+            logger.log('✅ Added new FAQ messages:', newBubbles.length);
             return [...prev, ...newBubbles];
           });
         });
@@ -1088,17 +1113,32 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   useEffect(() => {
     if (botConfig) {
       const extractedTheme = extractThemeFromBot(botConfig);
+      logger.log('[ChatInterface] Extracted theme layout:', extractedTheme.layout);
+      logger.log('[ChatInterface] Extracted theme typography:', extractedTheme.typography);
+      logger.log('[ChatInterface] BotConfig theme_typography:', botConfig.theme_typography);
       setTheme(extractedTheme);
 
       if (containerRef.current) {
+        logger.log('[ChatInterface] Applying theme to container');
         applyThemeToElement(
           containerRef.current,
           extractedTheme,
           featureUI?.darkMode
         );
+      } else {
+        logger.log('[ChatInterface] Container ref not ready yet');
       }
     }
   }, [botConfig, featureUI?.darkMode]);
+
+  // Apply theme whenever theme changes and container is available
+  // This also handles the initial mount case
+  useEffect(() => {
+    if (containerRef.current && theme !== DEFAULT_THEME) {
+      logger.log('[ChatInterface] Applying theme to container:', theme.layout);
+      applyThemeToElement(containerRef.current, theme, featureUI?.darkMode);
+    }
+  }, [theme, featureUI?.darkMode]);
 
   return (
     <div
@@ -1110,8 +1150,30 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       style={{
         fontFamily: theme.typography.fontFamily as string,
         fontSize: theme.typography.fontSize as string,
-        borderRadius: 'var(--theme-border-radius)',
-      }}
+        // Apply theme CSS variables directly via inline style for immediate availability
+        // This ensures colors work on first render before useEffect runs
+        '--theme-primary': theme.colors.primary,
+        '--theme-primary-content': theme.colors.primaryContent,
+        '--theme-secondary': theme.colors.secondary,
+        '--theme-secondary-content': theme.colors.secondaryContent,
+        '--theme-accent': theme.colors.accent,
+        '--theme-accent-content': theme.colors.accentContent,
+        '--theme-base-100': theme.colors.base100,
+        '--theme-base-200': theme.colors.base200,
+        '--theme-base-300': theme.colors.base300,
+        '--theme-base-content': theme.colors.baseContent,
+        '--theme-neutral': theme.colors.neutral,
+        '--theme-neutral-content': theme.colors.neutralContent,
+        '--theme-success': theme.colors.success,
+        '--theme-border-radius': theme.layout.borderRadius,
+        '--theme-button-radius': theme.layout.buttonRadius,
+        '--theme-input-radius': theme.layout.inputRadius,
+        '--theme-avatar-radius': theme.layout.avatarRadius,
+        '--theme-bubble-radius': theme.layout.bubbleRadius,
+        '--theme-font-size': theme.typography.fontSize,
+        '--theme-font-family': theme.typography.fontFamily,
+        borderRadius: theme.layout.borderRadius || '24px',
+      } as React.CSSProperties}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-theme-base bg-theme-primary">

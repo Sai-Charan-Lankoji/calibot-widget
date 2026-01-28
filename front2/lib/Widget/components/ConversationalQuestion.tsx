@@ -25,7 +25,7 @@ export const ConversationalQuestion: React.FC<ConversationalQuestionProps> = ({
       <Avatar src={avatarSrc} fallback={botName} size="sm" className="mt-1 shrink-0" />
       <div className="flex-1 space-y-3 min-w-0">
         {/* Question message */}
-        <div className="bg-theme-primary/10 px-4 py-3 rounded-2xl rounded-tl-md border border-theme-primary/20 shadow-sm">
+        <div className="bg-theme-primary/10 px-4 py-3 rounded-theme-bubble rounded-tl-md border border-theme-primary/20 shadow-sm">
           <p className="text-sm font-medium text-theme-base-content leading-relaxed">{question}</p>
         </div>
 

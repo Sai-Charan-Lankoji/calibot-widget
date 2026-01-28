@@ -1,7 +1,47 @@
+import { logger } from './logger';
+
 export interface ThemeConfig {
   colors: Record<string, string>
   typography: Record<string, string | number>
   layout: Record<string, string>
+}
+
+/**
+ * Convert rem values to px (1rem = 16px)
+ * This is critical for Shadow DOM isolation - rem units are relative to
+ * the host page's root font-size, not the widget's.
+ */
+function remToPx(value: string | undefined | null): string {
+  // Handle null/undefined
+  
+  if (!value) return '';
+  
+  // Normalize to string
+  const strValue = String(value).trim();
+  
+  // If already in px, return as-is
+  if (strValue.endsWith('px')) return strValue;
+  
+  // Handle special case of full round (circle)
+  if (strValue === '9999px' || strValue === 'full') return '9999px';
+  
+  // Handle rem values
+  if (strValue.includes('rem')) {
+    const match = strValue.match(/^([\d.]+)\s*rem$/);
+    if (match) {
+      const remValue = parseFloat(match[1]);
+      const pxValue = Math.round(remValue * 16);
+      logger.log(`[theme-manager] Converting ${strValue} → ${pxValue}px`);
+      return `${pxValue}px`;
+    }
+  }
+  
+  // Handle plain numbers (assume px)
+  if (/^\d+$/.test(strValue)) {
+    return `${strValue}px`;
+  }
+  
+  return strValue;
 }
 
 export const DEFAULT_THEME: ThemeConfig = {
@@ -32,10 +72,11 @@ export const DEFAULT_THEME: ThemeConfig = {
     fontWeightBold: 600,
   },
   layout: {
-    borderRadius: "1.5rem",
-    buttonRadius: "0.75rem",
-    inputRadius: "0.75rem",
+    borderRadius: "24px",    // Was 1.5rem
+    buttonRadius: "12px",    // Was 0.75rem
+    inputRadius: "12px",     // Was 0.75rem
     avatarRadius: "9999px",
+    bubbleRadius: "16px",    // Chat bubble border radius
   },
 }
 
@@ -43,6 +84,22 @@ export function extractThemeFromBot(bot: any): ThemeConfig {
   const themeColors = bot.theme_colors || {}
   const themeTypography = bot.theme_typography || {}
   const themeLayout = bot.theme_layout || {}
+
+  // Debug: Log incoming theme values
+  logger.log('[theme-manager] extractThemeFromBot - theme_typography:', themeTypography);
+  logger.log('[theme-manager] extractThemeFromBot - theme_layout:', themeLayout);
+
+  // Convert layout values from rem to px for Shadow DOM compatibility
+  const convertedLayout = {
+    borderRadius: themeLayout.borderRadius ? remToPx(themeLayout.borderRadius) : DEFAULT_THEME.layout.borderRadius,
+    buttonRadius: themeLayout.buttonRadius ? remToPx(themeLayout.buttonRadius) : DEFAULT_THEME.layout.buttonRadius,
+    inputRadius: themeLayout.inputRadius ? remToPx(themeLayout.inputRadius) : DEFAULT_THEME.layout.inputRadius,
+    avatarRadius: themeLayout.avatarRadius ? remToPx(themeLayout.avatarRadius) : DEFAULT_THEME.layout.avatarRadius,
+    bubbleRadius: themeLayout.bubbleRadius ? remToPx(themeLayout.bubbleRadius) : DEFAULT_THEME.layout.bubbleRadius,
+  };
+
+  // Debug: Log converted layout values
+  logger.log('[theme-manager] extractThemeFromBot - convertedLayout:', convertedLayout);
 
   return {
     colors: {
@@ -71,12 +128,7 @@ export function extractThemeFromBot(bot: any): ThemeConfig {
       fontWeightMedium: themeTypography.fontWeightMedium || DEFAULT_THEME.typography.fontWeightMedium,
       fontWeightBold: themeTypography.fontWeightBold || DEFAULT_THEME.typography.fontWeightBold,
     },
-    layout: {
-      borderRadius: themeLayout.borderRadius || DEFAULT_THEME.layout.borderRadius,
-      buttonRadius: themeLayout.buttonRadius || DEFAULT_THEME.layout.buttonRadius,
-      inputRadius: themeLayout.inputRadius || DEFAULT_THEME.layout.inputRadius,
-      avatarRadius: themeLayout.avatarRadius || DEFAULT_THEME.layout.avatarRadius,
-    },
+    layout: convertedLayout,
   }
 }
 
@@ -123,17 +175,21 @@ export function applyThemeToElement(element: HTMLElement, theme: ThemeConfig, da
   element.style.setProperty("--theme-success", darkColors.success)
 
   // Apply typography
+  logger.log('[theme-manager] applyThemeToElement - typography:', theme.typography);
   element.style.setProperty("--theme-font-family", theme.typography.fontFamily as string)
   element.style.setProperty("--theme-font-size", (theme.typography.fontSize || '14px') as string)
+  logger.log('[theme-manager] Applied --theme-font-size:', theme.typography.fontSize || '14px');
   element.style.setProperty("--theme-line-height", (theme.typography.lineHeight || 1.5).toString())
   element.style.setProperty("--theme-font-weight-normal", (theme.typography.fontWeightNormal || 400).toString())
   element.style.setProperty("--theme-font-weight-medium", (theme.typography.fontWeightMedium || 500).toString())
   element.style.setProperty("--theme-font-weight-bold", (theme.typography.fontWeightBold || 600).toString())
 
   // Apply layout
+  logger.log('[theme-manager] applyThemeToElement - layout values:', theme.layout);
   element.style.setProperty("--theme-border-radius", theme.layout.borderRadius as string)
   element.style.setProperty("--theme-button-radius", theme.layout.buttonRadius as string)
   element.style.setProperty("--theme-input-radius", theme.layout.inputRadius as string)
   element.style.setProperty("--theme-avatar-radius", theme.layout.avatarRadius as string)
+  element.style.setProperty("--theme-bubble-radius", theme.layout.bubbleRadius as string)
 }
 
